@@ -9,10 +9,10 @@ A Minecraft mod that provides visualization and tracking tools for minecart.
 ### 🛰️ HopperMinecartTracker
 Real-time monitoring of Hopper Minecarts with detailed chat feedback:
 * **Inventory Changes**: Receive notifications whenever items are added or removed from a minecart.
+* <<img width="1272" height="182" alt="image" src="https://github.com/user-attachments/assets/f875820e-fb93-4c87-befe-f52fef8946c5" />
 * **Destruction Alerts**: Get notified immediately when a minecart is destroyed or removed from the world.
-* **Optimization**: Completely refactored codebase for 1.21.x rendering architecture, fixing potential memory leaks and crash bugs during large-scale minecart stacking.
-<<img width="1272" height="182" alt="image" src="https://github.com/user-attachments/assets/f875820e-fb93-4c87-befe-f52fef8946c5" />
-<img width="1375" height="139" alt="image" src="https://github.com/user-attachments/assets/520431db-6786-4c68-9986-3f29eb4ea7cb" />
+* <img width="1375" height="139" alt="image" src="https://github.com/user-attachments/assets/520431db-6786-4c68-9986-3f29eb4ea7cb" />
+
 
 ### 🔍 Advanced Filtering
 Control exactly what information reaches your chat bar. The Filter system supports multi-color tracking:
