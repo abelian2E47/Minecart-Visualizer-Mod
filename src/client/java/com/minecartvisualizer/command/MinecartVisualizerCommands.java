@@ -1,377 +1,307 @@
 package com.minecartvisualizer.command;
-
-import com.minecartvisualizer.HopperMinecartState;
-import com.minecartvisualizer.MinecartTimerState;
-import com.minecartvisualizer.MinecartVisualizerUtils;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
+import com.minecartvisualizer.tracker.*;
 import com.mojang.brigadier.arguments.BoolArgumentType;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.entity.vehicle.HopperMinecartEntity;
-import net.minecraft.text.Style;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.command.CommandSource;
+import net.minecraft.command.argument.ItemStackArgumentType;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.BlockPos;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static com.minecartvisualizer.MinecartVisualizerClient.hopperMinecartTrackers;
-import static com.minecartvisualizer.MinecartVisualizerClient.travelTimers;
+import java.util.function.Consumer;
 
 public class MinecartVisualizerCommands {
-    public static int counter = 1;
-    public static ClientPlayerEntity playerEntity = null;
     public static void registerCommands() {
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
-                ClientCommandManager.literal("MinecartVisualizer")
-                        .then(ClientCommandManager.literal("tracker")
-                                .then(ClientCommandManager.literal("TravelTimer")
-                                        .then(ClientCommandManager.argument("x", DoubleArgumentType.doubleArg())
-                                                .then(ClientCommandManager.argument("y", DoubleArgumentType.doubleArg())
-                                                        .then(ClientCommandManager.argument("z", DoubleArgumentType.doubleArg())
-                                                                .executes(context -> {
-                                                                    ClientPlayerEntity player = context.getSource().getPlayer();
-                                                                    UUID lookedAtUuid = null;
-                                                                    if (MinecartVisualizerUtils.getLookedAtEntity() != null){
-                                                                        lookedAtUuid = MinecartVisualizerUtils.getLookedAtEntity().getUuid();
-                                                                    }
-                                                                    if (lookedAtUuid == null) {
-                                                                        if (player != null && MinecartVisualizerUtils.getLookedAtEntity() instanceof AbstractMinecartEntity)
-                                                                        {player.sendMessage(Text.literal("ERROR:Should face to Minecart entity"),true);}
-                                                                        return 0;}
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            var config = MinecartVisualizerConfig.getInstance();
 
-                                                                    double x = DoubleArgumentType.getDouble(context, "x");
-                                                                    double y = DoubleArgumentType.getDouble(context, "y");
-                                                                    double z = DoubleArgumentType.getDouble(context, "z");
+            dispatcher.register(ClientCommandManager.literal("MinecartVisualizer")
+                    //设置 (Setting)
+                    .then(ClientCommandManager.literal("setting")
+                            .then(registerBool("InfoTextDisplay", v -> config.enableInfoTextDisplay = v))
+                            .then(registerBool("AlwaysFacingThePlayer", v -> config.alwaysFacingThePlayer = v))
+                            .then(registerBool("MergeStackingMinecartInfo", v -> config.mergeStackingMinecartInfo = v))
+                    )
+                    //过滤器 (Filter)
+                    .then(ClientCommandManager.literal("filter")
+                            .then(ClientCommandManager.argument("color", StringArgumentType.string())
+                                    .suggests((c, b) -> CommandSource.suggestMatching(Arrays.stream(TrackerColor.values()).map(Enum::name).map(String::toLowerCase), b))
+                                    .then(ClientCommandManager.argument("listType", StringArgumentType.string())
+                                            .suggests((c, b) -> CommandSource.suggestMatching(new String[]{"white", "black"}, b))
+                                            .executes(MinecartVisualizerCommands::executeFilterToggle)
+                                            .then(ClientCommandManager.literal("add")
+                                                    .then(ClientCommandManager.argument("item", ItemStackArgumentType.itemStack(registryAccess))
+                                                            .executes(ctx -> executeFilterAction(ctx, true, false)))
+                                                    .then(ClientCommandManager.literal("hand")
+                                                            .executes(ctx -> executeFilterAction(ctx, true, true))))
+                                            .then(ClientCommandManager.literal("remove")
+                                                    .then(ClientCommandManager.argument("item", ItemStackArgumentType.itemStack(registryAccess))
+                                                            .executes(ctx -> executeFilterAction(ctx, false, false)))
+                                                    .then(ClientCommandManager.literal("hand")
+                                                            .executes(ctx -> executeFilterAction(ctx, false, true))))
+                                            .then(ClientCommandManager.literal("clear")
+                                                    .executes(MinecartVisualizerCommands::executeFilterClear))
+                                            .then(ClientCommandManager.literal("list")
+                                                    .executes(MinecartVisualizerCommands::executeFilterList))
+                                    )
+                            )
+                    )
+                    //计数器 (Counter)
+                    .then(ClientCommandManager.literal("counter")
+                            .then(ClientCommandManager.argument("color", StringArgumentType.string())
+                                    .suggests((c, b) -> CommandSource.suggestMatching(Arrays.stream(TrackerColor.values()).map(Enum::name).map(String::toLowerCase), b))
+                                    .executes(MinecartVisualizerCommands::executeCounterToggle)
+                                    .then(ClientCommandManager.literal("reset").executes(MinecartVisualizerCommands::executeCounterReset))
+                                    .then(ClientCommandManager.literal("print").executes(MinecartVisualizerCommands::executeCounterPrint))
+                            )
+                    )
 
-                                                                    Vec3d destination = new Vec3d(x, y, z);
-
-                                                                    MinecartVisualizerUtils.setNewTimer(lookedAtUuid, destination, player);
-
-                                                                    if (player != null) {player.sendMessage(Text.literal("Set a TravelTimer successful"),true);}
-                                                                    return 1;
-                                                                })))))
-                                .then(ClientCommandManager.literal("HopperMinecartTracker")
-                                        .then(ClientCommandManager.literal("Set")
-                                                .then(ClientCommandManager.argument("number",IntegerArgumentType.integer())
-                                                        .executes(context -> {
-                                                            ClientPlayerEntity player = context.getSource().getPlayer();
-                                                            int number = IntegerArgumentType.getInteger(context, "number");
-                                                            return setNewTracker(number, player);
-                                                        }))
-                                                .executes(context -> {
-                                                    ClientPlayerEntity player = context.getSource().getPlayer();
-                                                    return setNewTracker(MinecartVisualizerUtils.getNextAvailableNumber(), player);
-                                                })
-                                        )
-                                        .then(ClientCommandManager.literal("Remove")
-                                                .then(ClientCommandManager.argument("number",IntegerArgumentType.integer())
-                                                        .executes(context -> {
-                                                            ClientPlayerEntity player = context.getSource().getPlayer();
-                                                            int number = IntegerArgumentType.getInteger(context, "number");
-                                                            MinecartVisualizerUtils.removeHopperMinecartTracker(number, player);
-                                                            if (player != null && !(hopperMinecartTrackers.containsKey(number))){
-                                                                player.sendMessage(Text.literal("The number has be removed"),true);
-                                                                return 0;
-                                                            }
-                                                            if (player != null) {player.sendMessage(Text.literal("Remove successful"),true);}
-                                                            return 1;
-                                                        })))
-                                        .then(ClientCommandManager.literal("RemoveAll")
-                                                .executes(context ->{
-                                                    hopperMinecartTrackers.clear();
-                                                    ClientPlayerEntity player = context.getSource().getPlayer();
-                                                    if (player != null) {player.sendMessage(Text.literal("Remove successful"),true);}
-                                                    return 1;
-                                                }))
-                                        .then(ClientCommandManager.literal("TrackAll")
-                                                .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                        .executes(context -> {
-                                                            if (BoolArgumentType.getBool(context, "value")){
-                                                                playerEntity = context.getSource().getPlayer();
-                                                            }else {playerEntity = null;}
-                                                            setBooleanSetting(context.getSource(), "trackAll", BoolArgumentType.getBool(context, "value"));
-                                                            return 1;
-                                                        }))))
-                                .executes(context -> {
-                                    List<Text> outputMessages = new ArrayList<>();
-                                    TextColor travelTimerColor = TextColor.fromRgb(0x40E0D0);
-                                    TextColor hopperTrackerColor = TextColor.fromRgb(0xFFD700);
-                                    TextColor detailColor = TextColor.fromRgb(0xFFFFFF);
-
-                                    if (!travelTimers.isEmpty()) {
-                                        outputMessages.add(Text.literal("--- Travel Timers ---"));
-                                        for (Map.Entry<UUID, MinecartTimerState> entry : travelTimers.entrySet()) {
-                                            UUID uuid = entry.getKey();
-                                            MinecartTimerState state = entry.getValue();
-
-                                            Vec3d pos = MinecartVisualizerUtils.getMinecartPosition(uuid);
-                                            String posString = (pos != null) ? String.format("%.2f, %.2f, %.2f", pos.x, pos.y, pos.z) : "Known position";
-
-                                            Text head = Text.literal("【TravelTimer】").setStyle(Style.EMPTY.withColor(travelTimerColor));
-                                            Text content = Text.empty()
-                                                    .append(Text.literal(" | Already tracked " + state.tickCount + " ticks").setStyle(Style.EMPTY.withColor(detailColor)))
-                                                    .append(Text.literal(" | At: " + posString).setStyle(Style.EMPTY.withColor(detailColor)));
-                                            Text message = Text.empty()
-                                                    .append(head)
-                                                    .append(content);
-
-                                            outputMessages.add(message);
-                                        }
-                                    }
-
-                                    if (!hopperMinecartTrackers.isEmpty()) {
-                                        outputMessages.add(Text.literal("--- Hopper Trackers ---"));
-                                        for (Map.Entry<Integer, HopperMinecartState> entry : hopperMinecartTrackers.entrySet()) {
-                                            HopperMinecartState state = entry.getValue();
-
-                                            Vec3d pos = MinecartVisualizerUtils.getMinecartPosition(state.uuid);
-                                            String posString = (pos != null) ? String.format("%.2f, %.2f, %.2f", pos.x, pos.y, pos.z) : "Known position";
-
-                                            long runTime;
-                                            long gameTime = MinecartVisualizerUtils.getGameTime();
-                                            runTime = gameTime - state.startTime;
-                                            Text head = Text.literal("【HopperMinecartTracker】").setStyle(Style.EMPTY.withColor(hopperTrackerColor));
-                                            Text content = Text.literal(" | Number: " + entry.getKey())
-                                                    .append(Text.literal(" | Already tracked " + runTime + " ticks").setStyle(Style.EMPTY.withColor(detailColor)))
-                                                    .append(Text.literal(" | At: " + posString).setStyle(Style.EMPTY.withColor(detailColor)));
-                                            Text message = Text.empty()
-                                                    .append(head)
-                                                    .append(content);
-
-                                            outputMessages.add(message);
-                                        }
-                                    }
-
-                                    ClientPlayerEntity player = context.getSource().getPlayer();
-                                    for (Text message : outputMessages){
-                                        if (player != null) {player.sendMessage(message,false);}
-                                    }
-
-                                    if (outputMessages.isEmpty()) {
-                                        player.sendMessage(Text.literal("There are currently no minecart being tracked."),true);
-                                            return 0;
-                                    }
-                                    return 1;
-                                }))
-                        .then(ClientCommandManager.literal("setting")
-                                .then(ClientCommandManager.literal("WobbleValueDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableTNTWobbleDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("FuseTicksDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableTNTFuseTicksDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("TrackerNumberDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableTrackerNumberDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("InfoTextDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableInfoTextDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("PosDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enablePosTextDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("VelocityDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableVelocityTextDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("YawDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableYawTextDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("InventoryDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableHopperMinecartInventoryDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("LockedDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableHopperMinecartEnableDisplay", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("ItemStackCountDisplay")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "enableItemStackCountDisplay", BoolArgumentType.getBool(context, "value")))))
-)
-                        .then(ClientCommandManager.literal("option")
-                                .then(ClientCommandManager.literal("AlwaysFacingThePlayer")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "alwaysFacingThePlayer", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("MergeStackingMinecartInfo")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "mergeStackingMinecartInfo", BoolArgumentType.getBool(context, "value")))))
-                                .then(ClientCommandManager.literal("TrackerOutputRunTime")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackerOutputRuntime",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackerOutputPosition")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackerOutputPosition",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("GlowingTrackingMinecart")
-                                        .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "glowingTrackingMinecart",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackSlotChanges")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackSlotChanges",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackItemAdditions")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackItemAdditions",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackItemDecreases")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackItemDecreases",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackMinecartUnload")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackMinecartUnload",BoolArgumentType.getBool(context,"value")))))
-                                .then(ClientCommandManager.literal("TrackTNTMinecart")
-                                        .then(ClientCommandManager.argument("value",BoolArgumentType.bool())
-                                                .executes(context -> setBooleanSetting(context.getSource(), "trackTNTMinecart",BoolArgumentType.getBool(context,"value")))))
-                        )
-                        .then(ClientCommandManager.literal("argument")
-                                .then(ClientCommandManager.literal("InfoRenderDistance")
-                                        .then(ClientCommandManager.argument("value", IntegerArgumentType.integer(1, 32))
-                                                .executes(context -> setIntegerSetting(context.getSource(), "infoRenderDistance", IntegerArgumentType.getInteger(context, "value")))))
-                                .then(ClientCommandManager.literal("Accuracy")
-                                        .then(ClientCommandManager.argument("value", IntegerArgumentType.integer(1, 16))
-                                                .executes(context -> setIntegerSetting(context.getSource(), "accuracy", IntegerArgumentType.getInteger(context, "value")))))
-                        )
-
-                        .executes(context -> toggleBooleanSetting(context.getSource(), "enableMinecartVisualization"))));
+                    .then(ClientCommandManager.literal("point")
+                            .then(ClientCommandManager.literal("add")
+                                    .then(ClientCommandManager.argument("color", StringArgumentType.string())
+                                            .suggests((c, b) -> CommandSource.suggestMatching(Arrays.stream(TrackerColor.values()).map(Enum::name).map(String::toLowerCase), b))
+                                            .then(ClientCommandManager.argument("x", IntegerArgumentType.integer())
+                                                    .then(ClientCommandManager.argument("y", IntegerArgumentType.integer())
+                                                            .then(ClientCommandManager.argument("z", IntegerArgumentType.integer())
+                                                                    .executes(MinecartVisualizerCommands::executePointAdd))))
+                                            .then(ClientCommandManager.literal("look")
+                                                    .executes(MinecartVisualizerCommands::executePointAddLook))))
+                            .then(ClientCommandManager.literal("remove")
+                                    .then(ClientCommandManager.argument("pos", StringArgumentType.greedyString())
+                                            .suggests((c, b) -> CommandSource.suggestMatching(
+                                                    TrackerPointsManager.getPoints().keySet().stream()
+                                                            .map(p -> p.getX() + " " + p.getY() + " " + p.getZ()), b))
+                                            .executes(MinecartVisualizerCommands::executePointRemovePosString))
+                                    .then(ClientCommandManager.argument("color", StringArgumentType.string())
+                                            .suggests((c, b) -> CommandSource.suggestMatching(Arrays.stream(TrackerColor.values()).map(Enum::name), b))
+                                            .executes(MinecartVisualizerCommands::executePointRemoveColor)))
+                            .then(ClientCommandManager.literal("list").executes(MinecartVisualizerCommands::executePointList))
+                            .then(ClientCommandManager.literal("clear").executes(MinecartVisualizerCommands::executePointClear))
+                    )
+                    //主命令切换
+                    .executes(ctx -> {
+                        config.enableMinecartVisualization = !config.enableMinecartVisualization;
+                        MinecartVisualizerConfig.HANDLER.save();
+                        ctx.getSource().sendFeedback(Text.literal("§a[MinecartVisualizer] §fVisualization is now: " + (config.enableMinecartVisualization ? "§eON" : "§7OFF")));
+                        return 1;
+                    })
+            );
+        });
     }
 
-    private static int toggleBooleanSetting(FabricClientCommandSource source, String settingName){
+    // --- 工具方法 ---
 
-        if (settingName.equals("enableMinecartVisualization")) {MinecartVisualizerConfig.enableMinecartVisualization = !MinecartVisualizerConfig.enableMinecartVisualization;}
-        source.sendFeedback(Text.literal("§a[MinecartVisualizer] Configure §f" + settingName + " to §e" + MinecartVisualizerConfig.enableMinecartVisualization));
-        return 1;
+    private static LiteralArgumentBuilder<FabricClientCommandSource> registerBool(String name, Consumer<Boolean> setter) {
+        return ClientCommandManager.literal(name)
+                .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
+                        .executes(ctx -> {
+                            boolean val = BoolArgumentType.getBool(ctx, "value");
+                            setter.accept(val);
+                            MinecartVisualizerConfig.HANDLER.save();
+                            ctx.getSource().sendFeedback(Text.literal("§a[MinecartVisualizer] §f" + name + " set to: §e" + val));
+                            return 1;
+                        }));
     }
 
-    private static int setBooleanSetting(FabricClientCommandSource source, String settingName, boolean value) {
-        boolean success = true;
-        switch (settingName) {
-            case "enableTNTWobbleDisplay":
-                MinecartVisualizerConfig.enableTNTWobbleDisplay = value;
-                break;
-            case "enableMinecartVisualization":
-                MinecartVisualizerConfig.enableMinecartVisualization = value;
-                break;
-            case "enableTNTFuseTicksDisplay":
-                MinecartVisualizerConfig.enableTNTFuseTicksDisplay = value;
-                break;
-            case "enableTrackerNumberDisplay":
-                MinecartVisualizerConfig.enableTrackerNumberDisplay = value;
-                break;
-            case "enableInfoTextDisplay":
-                MinecartVisualizerConfig.enableInfoTextDisplay = value;
-                break;
-            case "enablePosTextDisplay":
-                MinecartVisualizerConfig.enablePosTextDisplay = value;
-                break;
-            case "enableVelocityTextDisplay":
-                MinecartVisualizerConfig.enableVelocityTextDisplay = value;
-                break;
-            case "enableYawTextDisplay":
-                MinecartVisualizerConfig.enableYawTextDisplay = value;
-                break;
-            case "enableHopperMinecartEnableDisplay":
-                MinecartVisualizerConfig.enableHopperMinecartEnableDisplay = value;
-                break;
-            case "enableHopperMinecartInventoryDisplay":
-                MinecartVisualizerConfig.enableHopperMinecartInventoryDisplay = value;
-                break;
-            case "enableItemStackCountDisplay":
-                MinecartVisualizerConfig.enableItemStackCountDisplay = value;
-                break;
-            case "mergeStackingMinecartInfo":
-                MinecartVisualizerConfig.mergeStackingMinecartInfo = value;
-                break;
-            case "alwaysFacingThePlayer":
-                MinecartVisualizerConfig.alwaysFacingThePlayer = value;
-                break;
-            case "trackerOutputRuntime":
-                MinecartVisualizerConfig.trackerOutputRuntime = value;
-                break;
-            case "trackerOutputPosition":
-                MinecartVisualizerConfig.trackerOutputPosition = value;
-                break;
-            case "glowingTrackingMinecart":
-                MinecartVisualizerConfig.glowingTrackingMinecart = value;
-                break;
-            case "trackSlotChanges":
-                MinecartVisualizerConfig.trackSlotChanges = value;
-                break;
-            case "trackItemAdditions":
-                MinecartVisualizerConfig.trackItemAdditions = value;
-                break;
-            case "trackItemDecreases":
-                MinecartVisualizerConfig.trackItemDecreases = value;
-                break;
-            case "trackMinecartUnload":
-                MinecartVisualizerConfig.trackMinecartUnload = value;
-                break;
-            case "trackAll":
-                MinecartVisualizerConfig.trackAllMinecart = value;
-                break;
-            case "trackMinecart":
-                MinecartVisualizerConfig.trackTNTMinecart = value;
-                break;
-            default:
-                success = false;
+    // --- 执行方法 ---
+    private static int executeFilterAction(CommandContext<FabricClientCommandSource> context, boolean isAdd, boolean isHand) {
+        String colorName = StringArgumentType.getString(context, "color");
+        String listType = StringArgumentType.getString(context, "listType");
+        TrackerColor color = TrackerColor.valueOf(colorName.toUpperCase());
+        TrackerFilter filter = TrackersManager.filters.get(color);
 
-        }
-        if (success) {
-            source.sendFeedback(Text.literal("§a[MinecartVisualizer] Configure §f" + settingName + " to: §e" + value));
+        String itemId = "";
+        if (isHand) {
+            ItemStack handStack = null;
+            if (MinecraftClient.getInstance().player != null) {
+                handStack = MinecraftClient.getInstance().player.getMainHandStack();
+            }
+            if (handStack != null && handStack.isEmpty()) {
+                context.getSource().sendError(Text.literal("Hand is empty!"));
+                return 0;
+            }
+            if (handStack != null) {
+                itemId = Registries.ITEM.getId(handStack.getItem()).toString();
+            }
         } else {
-            source.sendError(Text.literal("§c[MinecartVisualizer] Unknown configuration: " + settingName));
-        }
-        return 1;
-    }
-
-    private static int setIntegerSetting(FabricClientCommandSource source, String settingName, int value) {
-        boolean success = true;
-        switch (settingName) {
-            case "infoRenderDistance":
-                MinecartVisualizerConfig.infoRenderDistance = value;
-                break;
-            case "accuracy":
-                MinecartVisualizerConfig.accuracy = value;
-                break;
-            default:
-                success = false;
-                break;
+            itemId = Registries.ITEM.getId(ItemStackArgumentType.getItemStackArgument(context, "item").getItem()).toString();
         }
 
-        if (success) {
-            source.sendFeedback(Text.literal("§a[MinecartVisualizer] Configure §f" + settingName + " Set: §e" + value));
+        boolean isWhite = listType.equalsIgnoreCase("white");
+        if (isAdd) {
+            if (isWhite) filter.addWhiteList(itemId); else filter.addBlackList(itemId);
         } else {
-            source.sendError(Text.literal("§c[MinecartVisualizer] Unknown configuration: " + settingName));
+            if (isWhite) filter.removeWhiteList(itemId); else filter.removeBlackList(itemId);
+        }
+
+        context.getSource().sendFeedback(Text.literal("§a[Filter] " + (isAdd ? "Added " : "Removed ") + "§e" + itemId + "§f to " + colorName + " " + listType));
+        return 1;
+    }
+
+    private static int executeFilterToggle(CommandContext<FabricClientCommandSource> context) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(context, "color").toUpperCase());
+        String listType = StringArgumentType.getString(context, "listType");
+        TrackerFilter filter = TrackersManager.filters.get(color);
+
+        if (listType.equalsIgnoreCase("white")) {
+            filter.toggleWhiteList();
+            context.getSource().sendFeedback(Text.literal("§a[Filter] §fWhiteList for " + color.name() + ": " + (filter.enableWhiteList ? "§eON" : "§7OFF")));
+        } else {
+            filter.toggleBlackList();
+            context.getSource().sendFeedback(Text.literal("§a[Filter] §fBlackList for " + color.name() + ": " + (filter.enableBlackList ? "§eON" : "§7OFF")));
         }
         return 1;
     }
 
-    public static int setNewTracker(int number, ClientPlayerEntity player){
-        UUID lookedAtUuid = null;
-        if (MinecartVisualizerUtils.getLookedAtEntity() != null){
-            lookedAtUuid = MinecartVisualizerUtils.getLookedAtEntity().getUuid();
-        }
-        if (lookedAtUuid == null || !(MinecartVisualizerUtils.getLookedAtEntity() instanceof HopperMinecartEntity)) {
-            if (player != null)
-            {player.sendMessage(Text.literal("ERROR:Should face to HopperMinecart entity"),true);}
-            return 0;}
-
-        if (hopperMinecartTrackers.containsKey(number)){
-            player.sendMessage(Text.literal("The number has be used"),true);
-            return 0;
-        }
-
-        MinecartVisualizerUtils.setNewHopperMinecartTracker(lookedAtUuid, player, number);
-
-        if (player != null) {player.sendMessage(Text.literal("Set Tracker-" + number + " successful"),true);}
+    private static int executeFilterClear(CommandContext<FabricClientCommandSource> context) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(context, "color").toUpperCase());
+        String listType = StringArgumentType.getString(context, "listType");
+        TrackerFilter filter = TrackersManager.filters.get(color);
+        if (listType.equalsIgnoreCase("white")) filter.clearWhiteList(); else filter.clearBlackList();
+        context.getSource().sendFeedback(Text.literal("§c[Filter] Cleared " + color.name() + " " + listType + " list"));
         return 1;
     }
 
-    public static void setNewTracker(int number, ClientPlayerEntity player, UUID uuid){
+    private static int executeFilterList(CommandContext<FabricClientCommandSource> context) {
+        String colorName = StringArgumentType.getString(context, "color");
+        String listType = StringArgumentType.getString(context, "listType");
+        TrackerColor color = TrackerColor.valueOf(colorName.toUpperCase());
+        TrackerFilter filter = TrackersManager.filters.get(color);
+        List<String> list = listType.equalsIgnoreCase("white") ? filter.whiteList : filter.blackList;
 
-        MinecartVisualizerUtils.setNewHopperMinecartTracker(uuid, player, number);
-
+        context.getSource().sendFeedback(Text.literal("§6--- " + colorName + " " + listType.toUpperCase() + " LIST ---"));
+        if (list.isEmpty()) {
+            context.getSource().sendFeedback(Text.literal(" §8(Empty)"));
+        } else {
+            for (String id : list) {
+                context.getSource().sendFeedback(Text.literal(" §7- §f" + id).styled(s -> s.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to remove"))).withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/MinecartVisualizer filter " + colorName + " " + listType + " remove " + id))));
+            }
+        }
+        return 1;
     }
+
+    private static int executeCounterToggle(CommandContext<FabricClientCommandSource> ctx) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(ctx, "color").toUpperCase());
+        TrackerCounter counter = TrackersManager.getCounter(color);
+        counter.toggle();
+        ctx.getSource().sendFeedback(Text.literal("§a[Counter] §f" + color.name() + " is now " + (counter.isEnable() ? "§eENABLED" : "§7DISABLED")));
+        return 1;
+    }
+
+    private static int executeCounterReset(CommandContext<FabricClientCommandSource> ctx) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(ctx, "color").toUpperCase());
+        TrackersManager.getCounter(color).reset();
+        ctx.getSource().sendFeedback(Text.literal("§e[Counter] §fReset " + color.name()));
+        return 1;
+    }
+
+    private static int executeCounterPrint(CommandContext<FabricClientCommandSource> ctx) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(ctx, "color").toUpperCase());
+        if (MinecraftClient.getInstance().player != null) {
+            TrackersManager.getCounter(color).printCounterReport(MinecraftClient.getInstance().player);
+        }
+        return 1;
+    }
+
+    private static int executePointAdd(CommandContext<FabricClientCommandSource> context) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(context, "color").toUpperCase());
+        int x = IntegerArgumentType.getInteger(context, "x");
+        int y = IntegerArgumentType.getInteger(context, "y");
+        int z = IntegerArgumentType.getInteger(context, "z");
+        BlockPos pos = new BlockPos(x, y, z);
+
+        TrackerPointsManager.getInstance().addPoint(color, pos);
+        context.getSource().sendFeedback(Text.literal("§a[Point] §fAdded ")
+                .append(Text.literal(color.name()).styled(s -> s.withColor(color.getHex())))
+                .append(" at " + pos.toShortString()));
+        return 1;
+    }
+
+    private static int executePointAddLook(CommandContext<FabricClientCommandSource> context) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(context, "color").toUpperCase());
+
+        HitResult hit = MinecraftClient.getInstance().crosshairTarget;
+        if (hit != null && hit.getType() == HitResult.Type.BLOCK) {
+            BlockPos pos = ((BlockHitResult) hit).getBlockPos();
+            TrackerPointsManager.getInstance().addPoint(color, pos);
+            context.getSource().sendFeedback(Text.literal("§a[Point] §fAdded ")
+                    .append(Text.literal(color.name()).styled(s -> s.withColor(color.getHex())))
+                    .append(" at §e" + pos.toShortString() + " §8(Look)"));
+        } else {
+            context.getSource().sendError(Text.literal("§cYou are not looking at a block!"));
+        }
+        return 1;
+    }
+
+    private static int executePointRemovePosString(CommandContext<FabricClientCommandSource> context) {
+        String posStr = StringArgumentType.getString(context, "pos");
+        try {
+            String[] parts = posStr.split(" ");
+            if (parts.length == 3) {
+                int x = Integer.parseInt(parts[0]);
+                int y = Integer.parseInt(parts[1]);
+                int z = Integer.parseInt(parts[2]);
+                BlockPos pos = new BlockPos(x, y, z);
+
+                TrackerPointsManager.getInstance().removePoint(pos);
+                context.getSource().sendFeedback(Text.literal("§e[Point] §fRemoved point at " + pos.toShortString()));
+            }
+        } catch (Exception e) {
+            context.getSource().sendError(Text.literal("§cInvalid coordinates format! Use 'x y z'"));
+        }
+        return 1;
+    }
+
+    private static int executePointRemoveColor(CommandContext<FabricClientCommandSource> ctx) {
+        TrackerColor color = TrackerColor.valueOf(StringArgumentType.getString(ctx, "color").toUpperCase());
+        TrackerPointsManager.getInstance().removePoint(color);
+        ctx.getSource().sendFeedback(Text.literal("§e[Point] §fRemoved all points with color ")
+                .append(Text.literal(color.name()).styled(s -> s.withColor(color.getHex()))));
+        return 1;
+    }
+
+    private static int executePointClear(CommandContext<FabricClientCommandSource> ctx) {
+        TrackerPointsManager.getInstance().clearAllPoints();
+        ctx.getSource().sendFeedback(Text.literal("§c[Point] Cleared all tracking points"));
+        return 1;
+    }
+
+    private static int executePointList(CommandContext<FabricClientCommandSource> ctx) {
+        var points = TrackerPointsManager.getPoints();
+        ctx.getSource().sendFeedback(Text.literal("§6--- TRACKING POINTS ---"));
+
+        if (points.isEmpty()) {
+            ctx.getSource().sendFeedback(Text.literal(" §8(Empty)"));
+        } else {
+            points.forEach((pos, state) -> {
+                Text posText = Text.literal("[" + pos.toShortString() + "]")
+                        .styled(style -> style
+                                .withColor(state.getColor().getHex())
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/tp @s " + pos.getX() + " " + pos.getY() + " " + pos.getZ()))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to prepare TP command")))
+                        );
+
+                ctx.getSource().sendFeedback(Text.literal(" §7- ")
+                        .append(Text.literal(state.getColor().name() + ": ").styled(s -> s.withColor(state.getColor().getHex())))
+                        .append(posText));
+            });
+        }
+        return 1;
+    }
+
 }

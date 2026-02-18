@@ -3,9 +3,9 @@
 	"id": "minecartvisualizer",
 	"version": "${version}",
 	"name": "MinecartVisualizer",
-	"description": "Display minecarts info",
+	"description": "Show minecarts info",
 	"authors": [
-		"Ay_2E47"
+		"Abelian_2E47"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
@@ -20,6 +20,9 @@
 		],
 		"client": [
 			"com.minecartvisualizer.MinecartVisualizerClient"
+		],
+		"modmenu": [
+			"com.minecartvisualizer.config.MinecartVisualizerModMenuIntegration"
 		]
 	},
 	"mixins": [

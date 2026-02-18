@@ -19,9 +19,8 @@ public class MinecartVisualizer implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		PayloadTypeRegistry.playC2S().register(MinecartDataPayload.ID, MinecartDataPayload.CODEC);
-		PayloadTypeRegistry.playC2S().register(HopperMinecartDataPayload.ID, HopperMinecartDataPayload.CODEC);
-		PayloadTypeRegistry.playC2S().register(TNTMinecartDataPayload.ID,TNTMinecartDataPayload.CODEC);
-
+		PayloadTypeRegistry.playS2C().register(MinecartDataPayload.ID, MinecartDataPayload.CODEC);
+		PayloadTypeRegistry.playS2C().register(HopperMinecartDataPayload.ID, HopperMinecartDataPayload.CODEC);
+		PayloadTypeRegistry.playS2C().register(TNTMinecartDataPayload.ID,TNTMinecartDataPayload.CODEC);
 	}
 }

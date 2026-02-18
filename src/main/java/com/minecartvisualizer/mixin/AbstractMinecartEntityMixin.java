@@ -26,15 +26,26 @@ public abstract class AbstractMinecartEntityMixin extends Entity {
     public void sendMinecartData(CallbackInfo ci) {
         if (!this.getWorld().isClient) {
 
+            double XMovement = this.getX() - this.prevX;
+            double YMovement = this.getY() - this.prevY;
+            double ZMovement = this.getZ() - this.prevZ;
+
+            double movement = new Vec3d(XMovement, YMovement, ZMovement).length();
+
             ServerWorld serverWorld = (ServerWorld) this.getWorld();
 
             UUID uuid = this.getUuid();
             Vec3d pos = this.getPos();
             Vec3d velocity = this.getVelocity();
             float yaw = this.getYaw();
-            MinecartDataPayload payload = new MinecartDataPayload(uuid,pos,velocity,yaw);
-            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) < 64 * 64)
-                    .forEach(player -> ServerPlayNetworking.send(player, payload));
+            int id = this.getId();
+            MinecartDataPayload payload = new MinecartDataPayload(uuid,pos,velocity,movement,yaw,id);
+            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) < 32 * 32)
+                    .forEach(player -> {
+                        if (ServerPlayNetworking.canSend(player, MinecartDataPayload.ID)) {
+                            ServerPlayNetworking.send(player, payload);
+                        }
+                    });
         }
     }
 }

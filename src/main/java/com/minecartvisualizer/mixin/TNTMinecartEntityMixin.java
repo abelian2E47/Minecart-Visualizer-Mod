@@ -1,6 +1,7 @@
 package com.minecartvisualizer.mixin;
 
 
+import com.minecartvisualizer.HopperMinecartDataPayload;
 import com.minecartvisualizer.TNTMinecartDataPayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.Entity;
@@ -13,7 +14,6 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -39,14 +39,17 @@ public abstract class TNTMinecartEntityMixin extends VehicleEntity {
             int fuseTicks = this.getFuseTicks();
             Float damageWobbleStrength = this.getDamageWobbleStrength();
 
-
-            TNTMinecartDataPayload payload = new TNTMinecartDataPayload(uuid, fuseTicks ,false , "null", new Vec3d(114514,191981,0), damageWobbleStrength);
-            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) <64 * 64)
-                    .forEach(player -> ServerPlayNetworking.send(player, payload));
+            TNTMinecartDataPayload payload = new TNTMinecartDataPayload(uuid, fuseTicks ,false , new Vec3d(114514,191981,0), damageWobbleStrength);
+            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) < 32 * 32)
+                    .forEach(player -> {
+                        if (ServerPlayNetworking.canSend(player, TNTMinecartDataPayload.ID)) {
+                            ServerPlayNetworking.send(player, payload);
+                        }
+                    });
         }
     }
 
-    @Inject(at = @At("TAIL"), method = "explode(Lnet/minecraft/entity/damage/DamageSource;D)V")
+   @Inject(at = @At("TAIL"), method = "explode(Lnet/minecraft/entity/damage/DamageSource;D)V")
     public void sendExplosionData(DamageSource damageSource, double power, CallbackInfo ci){
         if (!this.getWorld().isClient) {
 
@@ -55,12 +58,8 @@ public abstract class TNTMinecartEntityMixin extends VehicleEntity {
             UUID uuid = this.getUuid();
 
             Vec3d explosionPos = this.getPos();
-            Entity attacker = null;
-            if (damageSource != null){attacker = damageSource.getAttacker();}
-            String attackerString = "Null";
-            if (attacker != null){attackerString = attacker.getName().toString();}
 
-            TNTMinecartDataPayload payload = new TNTMinecartDataPayload(uuid, 0, true, attackerString, explosionPos, 0.0f);
+            TNTMinecartDataPayload payload = new TNTMinecartDataPayload(uuid, 0, true, explosionPos, 0.0f);
             serverWorld.getPlayers(player -> player.squaredDistanceTo(this) <64 * 64)
                     .forEach(player -> ServerPlayNetworking.send(player, payload));
 

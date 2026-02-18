@@ -63,10 +63,16 @@ public class RenderLayersMixin {
                         .overlay(ENABLE_OVERLAY_COLOR)
                         .depthTest(ALWAYS_DEPTH_TEST)
                         .build(true);
-                return RenderLayer.of("entity_cutout", VertexFormats.POSITION_COLOR_TEXTURE_OVERLAY_LIGHT_NORMAL, VertexFormat.DrawMode.QUADS, 1536, true, false, multiPhaseParameters);
+                return RenderLayer.of(
+                        "entity_cutout",
+                        VertexFormats.POSITION_COLOR_TEXTURE_OVERLAY_LIGHT_NORMAL,
+                        VertexFormat.DrawMode.QUADS,
+                        1536,
+                        true,
+                        false,
+                        multiPhaseParameters);
             }
     );
-
 
     @Inject(
             method = "getItemLayer",

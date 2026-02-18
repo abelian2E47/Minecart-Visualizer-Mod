@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "AbstractMinecartEntityRendererMixin",
+    "ClientWorldAccessor",
     "RenderLayersMixin",
     "WorldRenderMixin"
   ],
@@ -11,6 +12,7 @@
     "defaultRequire": 1
   },
   "mixins": [
-    "EntityMixin"
+    "EntityMixin",
+    "HopperMinecartEntityMixin"
   ]
 }

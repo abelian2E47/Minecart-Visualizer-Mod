@@ -1,13 +1,13 @@
 package com.minecartvisualizer.mixin;
 
 import com.minecartvisualizer.HopperMinecartDataPayload;
+import com.minecartvisualizer.MinecartDataPayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.vehicle.HopperMinecartEntity;
 import net.minecraft.entity.vehicle.StorageMinecartEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -34,7 +34,6 @@ public abstract class HopperMinecartEntityMixin extends StorageMinecartEntity {
 
             UUID uuid = this.getUuid();
             boolean enable = this.isEnabled();
-            Box boundingBox = this.getBoundingBox();
             List<ItemStack> items = new ArrayList<>();
             for (int i = 0; i < 5; i++) {
                 if (this.getStack(i) == null){
@@ -43,10 +42,13 @@ public abstract class HopperMinecartEntityMixin extends StorageMinecartEntity {
                     items.add(this.getStack(i));
                 }
             }
-
-            HopperMinecartDataPayload payload = new HopperMinecartDataPayload(uuid,enable,boundingBox,items);
-            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) <64 * 64)
-                    .forEach(player -> ServerPlayNetworking.send(player, payload));
+            HopperMinecartDataPayload payload = new HopperMinecartDataPayload(uuid,enable,items);
+            serverWorld.getPlayers(player -> player.squaredDistanceTo(this) < 32 * 32)
+                    .forEach(player -> {
+                        if (ServerPlayNetworking.canSend(player, HopperMinecartDataPayload.ID)) {
+                            ServerPlayNetworking.send(player, payload);
+                        }
+                    });
         }
     }
 }

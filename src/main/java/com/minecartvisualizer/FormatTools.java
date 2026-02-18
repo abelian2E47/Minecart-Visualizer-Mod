@@ -2,20 +2,21 @@ package com.minecartvisualizer;
 
 import net.minecraft.util.math.Vec3d;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-
 public class FormatTools {
-    public static double truncate(double value,int accuracy) {
-        BigDecimal bd = new BigDecimal(String.valueOf(value));
-        bd = bd.setScale(accuracy, RoundingMode.DOWN);
-        return bd.doubleValue();
+    public static String formatVec(Vec3d vec, int accuracy, boolean useSignificant) {
+        return String.format("(%s, %s, %s)",
+                formatDouble(vec.x, accuracy, useSignificant),
+                formatDouble(vec.y, accuracy, useSignificant),
+                formatDouble(vec.z, accuracy, useSignificant));
     }
 
-    public static Vec3d truncate(Vec3d vec, int accuracy) {
-        double x = truncate(vec.x, accuracy);
-        double y = truncate(vec.y, accuracy);
-        double z = truncate(vec.z, accuracy);
-        return new Vec3d(x, y, z);
+    public static String formatDouble(double value, int accuracy, boolean useSignificant) {
+        if (Math.abs(value) < 1e-9) return "0.00";
+
+        if (useSignificant) {
+            return String.format("%." + accuracy + "g", value);
+        } else {
+            return String.format("%." + accuracy + "f", value);
+        }
     }
 }

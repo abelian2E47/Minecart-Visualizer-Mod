@@ -1,73 +1,79 @@
 package com.minecartvisualizer;
+import io.netty.buffer.ByteBuf;
 import net.minecraft.network.PacketByteBuf;
+import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.codec.PacketDecoder;
-import net.minecraft.network.codec.ValueFirstEncoder;
+import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Uuids;
 import net.minecraft.util.math.Vec3d;
 import java.util.ArrayList;
 import java.util.UUID;
 
-public record MinecartDataPayload(UUID uuid,Vec3d pos,Vec3d velocity,float yaw) implements CustomPayload {
+public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double speed, float yaw, int id) implements CustomPayload {
+
     public static final Id<MinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.MINECART_DATA_PACKET_ID);
 
+    public static final PacketCodec<ByteBuf, Vec3d> VEC3D_CODEC = PacketCodec.of(
+            (value, buf) -> {
+                buf.writeDouble(value.x);
+                buf.writeDouble(value.y);
+                buf.writeDouble(value.z);
+            },
+            buf -> new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble())
+    );
+
+    public static final PacketCodec<RegistryByteBuf, MinecartDataPayload> CODEC = PacketCodec.tuple(
+            Uuids.PACKET_CODEC, MinecartDataPayload::uuid,
+            VEC3D_CODEC.cast(), MinecartDataPayload::pos,
+            VEC3D_CODEC.cast(), MinecartDataPayload::velocity,
+            PacketCodecs.DOUBLE, MinecartDataPayload::speed,
+            PacketCodecs.FLOAT, MinecartDataPayload::yaw,
+            PacketCodecs.VAR_INT, MinecartDataPayload::id,
+            MinecartDataPayload::new
+    );
+
     @Override
-    public Id<? extends CustomPayload> getId() {return ID;}
-
-    public static final ValueFirstEncoder<PacketByteBuf, MinecartDataPayload> ENCODER = (payload, buf) -> {
-        buf.writeUuid(payload.uuid);
-        buf.writeDouble(payload.pos().x);
-        buf.writeDouble(payload.pos().y);
-        buf.writeDouble(payload.pos().z);
-        buf.writeDouble(payload.velocity().x);
-        buf.writeDouble(payload.velocity().y);
-        buf.writeDouble(payload.velocity().z);
-        buf.writeFloat(payload.yaw());
-    };
-
-    public static final PacketDecoder<PacketByteBuf, MinecartDataPayload> DECODER = (buf) -> {
-        UUID uuid = buf.readUuid();
-        double xPos = buf.readDouble();
-        double yPos = buf.readDouble();
-        double zPos = buf.readDouble();
-        Vec3d pos = new Vec3d(xPos, yPos, zPos);
-        double xVel = buf.readDouble();
-        double yVel = buf.readDouble();
-        double zVel = buf.readDouble();
-        Vec3d velocity = new Vec3d(xVel, yVel, zVel);
-        float yaw = buf.readFloat();
+    public Id<? extends CustomPayload> getId() {
+        return ID;
+    }
 
 
-        return new MinecartDataPayload(uuid,pos,velocity,yaw);
-    };
+    public ArrayList<MutableText> getInfoTexts(int accuracy, boolean[] EnableFunctions) {
+        ArrayList<MutableText> infoTexts = new ArrayList<>();
 
-    public static final PacketCodec<PacketByteBuf, MinecartDataPayload> CODEC = PacketCodec.of(ENCODER, DECODER);
-
-    public ArrayList<MutableText> getInfoTexts(int accuracy,boolean[] EnableFunctions){
-        ArrayList<MutableText> InfoTexts = new ArrayList<>();
-
-        Vec3d rawPos = this.pos();
-        if (rawPos == null) {
-            InfoTexts.add(Text.translatable("Pos").append(":").append(Text.translatable("unknown")));
-        } else {
-            Vec3d adjustedPos = FormatTools.truncate(rawPos, accuracy);
-            if (EnableFunctions[0]){InfoTexts.add(Text.translatable("Pos").append(": ").append(adjustedPos.toString()));}
+        if (this.pos() == null) {
+            infoTexts.add(Text.translatable("info.minecartvisualizer.pos").append(Text.literal("unknown")));
+        } else if (EnableFunctions[0]) {
+            infoTexts.add(Text.translatable("info.minecartvisualizer.pos")
+                    .append(FormatTools.formatVec(this.pos(), accuracy, false)));
         }
 
-        Vec3d rawVelocity = this.velocity();
-        if (rawVelocity == null) {
-            InfoTexts.add(Text.translatable("Velocity").append(":").append(Text.translatable("unknown")));
-        } else {
-            Vec3d adjustedVelocity = FormatTools.truncate(rawVelocity, accuracy);
-            if (EnableFunctions[1]){InfoTexts.add(Text.translatable("Velocity").append(": ").append(adjustedVelocity.toString()));}
+        if (this.velocity() == null) {
+            infoTexts.add(Text.translatable("info.minecartvisualizer.velocity").append(Text.literal("unknown")));
+        } else if (EnableFunctions[1]) {
+            infoTexts.add(Text.translatable("info.minecartvisualizer.velocity")
+                    .append(FormatTools.formatVec(this.velocity(), accuracy, true)));
         }
 
-        double rawYaw = this.yaw();
-        double adjustedYaw = FormatTools.truncate(rawYaw, accuracy);
-        if(EnableFunctions[2]){InfoTexts.add(Text.translatable("Yaw").append(": ").append(String.valueOf(adjustedYaw)));}
-        return InfoTexts;
+        if (EnableFunctions[2]) {
+            infoTexts.add(Text.translatable("info.minecartvisualizer.yaw")
+                    .append(FormatTools.formatDouble(this.yaw(), accuracy, false)));
+        }
+
+        if (EnableFunctions[3]){
+            if (EnableFunctions[4]){
+                infoTexts.add(Text.translatable("info.minecartvisualizer.speed")
+                        .append(FormatTools.formatDouble(this.speed()*20, accuracy, true)).append("m/s"));
+            }else {
+                infoTexts.add(Text.translatable("info.minecartvisualizer.speed")
+                        .append(FormatTools.formatDouble(this.speed(), accuracy, true)).append("m/gt"));
+            }
+        }
+
+        return infoTexts;
     }
 
 

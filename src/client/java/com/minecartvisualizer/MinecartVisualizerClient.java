@@ -2,21 +2,20 @@ package com.minecartvisualizer;
 
 import com.minecartvisualizer.command.MinecartVisualizerCommands;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
+import com.minecartvisualizer.config.MinecartVisualizerConfigScreen;
+import com.minecartvisualizer.tracker.TrackerColor;
+import com.minecartvisualizer.tracker.TrackersManager;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.network.ClientPlayerEntity;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.vehicle.HopperMinecartEntity;
+import net.minecraft.item.DyeItem;
 import net.minecraft.item.ItemStack;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import net.minecraft.text.TextColor;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.ActionResult;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.*;
@@ -24,220 +23,79 @@ import java.util.*;
 
 public class MinecartVisualizerClient implements ClientModInitializer {
 
-
-	public static Map<UUID, MinecartTimerState> travelTimers = new HashMap<>();
-	public static Map<Integer, HopperMinecartState> hopperMinecartTrackers = new HashMap<>();
-	private static KeyBinding enableKeyBinding;
-	private static KeyBinding displayInfoKeyBinding;
-	private static KeyBinding setTrackerBinding;
+	public static KeyBinding mainConfigKey;
+	public static KeyBinding subConfigKey;
 	public static UUID uuid;
 
 	public void onInitializeClient() {
+		MinecartVisualizerConfig.HANDLER.load();
+
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			MinecartVisualizerConfig.HANDLER.save();
+		});
+
 		MinecartClientHandler.register();
 		MinecartVisualizerCommands.registerCommands();
 
-		enableKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-				"Enable",
+		mainConfigKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+				"key.minecartvisualizer.config_main",
 				InputUtil.Type.KEYSYM,
-				InputUtil.UNKNOWN_KEY.getCode(),
-				"MinecartVisualizer"));
+				GLFW.GLFW_KEY_C,
+				"category.minecartvisualizer.title"
+		));
 
-		displayInfoKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-				"Show Info",
+		subConfigKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+				"key.minecartvisualizer.config_sub",
 				InputUtil.Type.KEYSYM,
-				GLFW.GLFW_KEY_R,
-				"MinecartVisualizer"));
+				GLFW.GLFW_KEY_V,
+				"category.minecartvisualizer.title"
+		));
 
-		setTrackerBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-				"Set Tracker",
-				InputUtil.Type.KEYSYM,
-				GLFW.GLFW_KEY_O,
-				"MinecartVisualizer"));
-
-
-
+		//配置界面快捷键
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			while (enableKeyBinding.wasPressed()) {
-				MinecartVisualizerConfig.enableMinecartVisualization = !MinecartVisualizerConfig.enableMinecartVisualization;
-			}
+			if (client.player == null) return;
 
-			while (setTrackerBinding.wasPressed()){
-				ClientPlayerEntity player = client.player;
-				MinecartVisualizerCommands.setNewTracker(MinecartVisualizerCommands.counter++ ,player);
-			}
+			InputUtil.Key mainKey = InputUtil.fromTranslationKey(mainConfigKey.getBoundKeyTranslationKey());
+			InputUtil.Key subKey = InputUtil.fromTranslationKey(subConfigKey.getBoundKeyTranslationKey());
 
-			if(!MinecartVisualizerConfig.enableMinecartVisualization && displayInfoKeyBinding.isPressed()){
-				if (MinecartVisualizerUtils.getLookedAtEntity() != null){uuid = MinecartVisualizerUtils.getLookedAtEntity().getUuid();}
-			}else {uuid = null;}
+			if (mainKey.equals(InputUtil.UNKNOWN_KEY)) return;
+
+			boolean isSubKeyNone = subKey.equals(InputUtil.UNKNOWN_KEY);
+
+			if (isSubKeyNone) {
+				while (mainConfigKey.wasPressed()) {
+					client.setScreen(MinecartVisualizerConfigScreen.create(client.currentScreen));
+				}
+			} else {
+				while (subConfigKey.wasPressed()) {
+					long windowHandle = client.getWindow().getHandle();
+					if (InputUtil.isKeyPressed(windowHandle, mainKey.getCode())) {
+						client.setScreen(MinecartVisualizerConfigScreen.create(client.currentScreen));
+					}
+				}
+			}
 		});
-
-
-
-
 
 		//漏斗矿车追踪器
-		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (!hopperMinecartTrackers.isEmpty()){
-				Iterator<Map.Entry<Integer, HopperMinecartState>> iterator = hopperMinecartTrackers.entrySet().iterator();
+		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+			if (world.isClient && entity instanceof net.minecraft.entity.vehicle.HopperMinecartEntity minecart && MinecartVisualizerConfig.getInstance().trackingByDye) {
+				ItemStack stack = player.getStackInHand(hand);
 
-				while (iterator.hasNext()) {
-					Map.Entry<Integer, HopperMinecartState> entry = iterator.next();
-					int number = entry.getKey();
-					UUID entityUuid = entry.getValue().uuid;
-					HopperMinecartState state = entry.getValue();
-
-					Text numberText = Text.literal("[Tracker-" + number + "]").setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x3490dE)));
-
-					long gameTime = MinecartVisualizerUtils.getGameTime();
-					String changeInCount = " %d->%d ";
-
-					long runTime;
-					Text runTimeText = Text.literal("" );
-					if (MinecartVisualizerConfig.trackerOutputRuntime){
-						runTime = gameTime - state.startTime;
-						runTimeText = Text.literal("[gt" + runTime + "]" ).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFFD02C)));
-					}
-
-					Text posText;
-					if (state.pos != null && MinecartVisualizerConfig.trackerOutputPosition) {
-						Vec3d formatedPos = FormatTools.truncate(state.pos,1);
-						posText = Text.literal(formatedPos.toString()).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x7EADFF)));
-					} else {posText = Text.literal("");}
-
-					if (!MinecartVisualizerUtils.isEntityLoaded(entityUuid)) {
-
-						if (MinecartVisualizerConfig.trackMinecartUnload){
-							Text unLoadedText = Text.literal("Tracker -"+ entry.getKey() +" be unloaded");
-							state.player.sendMessage(runTimeText.copy().append(unLoadedText).append(posText).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFF322B))),false);
-						}
-						iterator.remove();
-						continue;
-					}
-
-					List <ItemStack> inventory = MinecartVisualizerUtils.getHopperMinecartInventory(entityUuid);
-					Vec3d pos = MinecartVisualizerUtils.getMinecartPosition(entityUuid);
-					state.updateState(inventory, pos);
-
-					if (state.inventory != null && state.lastInventory != null && state.pos != null){
-
-
-						Map<Integer, Boolean> map = state.CheckInventoryChanges();
-						for (Map.Entry<Integer, Boolean> slot : map.entrySet()){
-							if (slot.getValue()) {
-
-								int slotNumber = slot.getKey();
-								int fixedSlotNumber = slotNumber+1;
-
-
-
-								Text slotText = Text.literal("[" + "Slot" + fixedSlotNumber + "]").formatted(Formatting.GOLD);
-								Text itemText = Text.literal("");
-								Text countText = Text.literal("");
-
-								if (state.inventory.get(slotNumber).getItem() != state.lastInventory.get(slotNumber).getItem()){
-									Text item1 = state.lastInventory.get(slotNumber).getItem().getName().copy()
-											.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x64BE00)));
-									Text item2 = state.inventory.get(slotNumber).getItem().getName().copy()
-											.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xE85FAB)));
-									Text arrow = Text.literal(" -> ");
-
-
-									if (MinecartVisualizerConfig.trackSlotChanges){
-										Text slotChangedText = Text.literal("Slot Changed:")
-												.setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xBF1534)));
-										Text finalText;
-										finalText = runTimeText.copy()
-												.append(numberText)
-												.append(posText)
-												.append(slotChangedText)
-												.append(item1)
-												.append(arrow)
-												.append(item2);
-										state.player.sendMessage(finalText, false);
-										continue;
-									}
-								}else {
-									String itemString = " " + state.inventory.get(slotNumber).getItem().toString().replace("minecraft:","");
-									itemText = Text.literal(itemString).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xBD41F2)));
-								}
-								if (state.inventory.get(slotNumber).getCount() != state.lastInventory.get(slotNumber).getCount()){
-									String countString = String.format(changeInCount,state.lastInventory.get(slotNumber).getCount(), state.inventory.get(slotNumber).getCount());
-									if (state.inventory.get(slotNumber).getCount() > state.lastInventory.get(slotNumber).getCount()){
-										if (!MinecartVisualizerConfig.trackItemAdditions){continue;}
-										countText = Text.literal(countString).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0x7CFC00)));
-									}else {
-										if (!MinecartVisualizerConfig.trackItemDecreases){continue;}
-										countText = Text.literal(countString).setStyle(Style.EMPTY.withColor(TextColor.fromRgb(0xFF1493)));
-									}
-								}
-
-
-								Text dividingLine = Text.literal("");
-								if (MinecartVisualizerConfig.trackItemAdditions || MinecartVisualizerConfig.trackItemDecreases){
-									dividingLine = Text.literal(" | ").formatted(Formatting.GRAY);
-								}
-
-								Text finalText = runTimeText.copy()
-										.append(numberText)
-										.append(slotText)
-										.append(itemText)
-										.append(dividingLine)
-										.append(countText)
-										.append(posText);
-								state.player.sendMessage(finalText,false);
-							}
-						}
-					}
-                }
-			}
-		});
-
-		//矿车运动计时器
-		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (travelTimers != null){
-				Iterator<Map.Entry<UUID, MinecartTimerState>> iterator = travelTimers.entrySet().iterator();
-
-				while (iterator.hasNext()){
-					Map.Entry<UUID, MinecartTimerState> entry = iterator.next();
-					UUID uuid = entry.getKey();
-					MinecartTimerState state = entry.getValue();
-
-					if (!MinecartVisualizerUtils.isEntityLoaded(uuid)) {
-						iterator.remove();
-						continue;
-					}
-					Vec3d entityPos = MinecartVisualizerUtils.getMinecartPosition(uuid);
-
-					if (state.startingPoint == null){state.startingPoint = entityPos;}
-
-					if (!state.hasMoved && state.startingPoint != null && !state.startingPoint.equals(entityPos)){state.hasMoved = true;}
-
-					if (entityPos == null){continue;}
-
-					BlockPos minecartBlockPos = new BlockPos((int) entityPos.x, (int) entityPos.y, (int) entityPos.z);
-
-					BlockPos destinationBlockPos = new BlockPos((int) state.destination.x, (int) state.destination.y, (int) state.destination.z);
-
-					if (minecartBlockPos.equals(destinationBlockPos)) {
-						state.player.sendMessage(Text.literal("Move to " + destinationBlockPos + " takes " + state.tickCount + " gt"),false);
-						iterator.remove();
+				if (stack.getItem() instanceof DyeItem dyeItem) {
+					TrackerColor selectedColor = TrackerColor.valueOf(dyeItem.getColor().name());
+					TrackersManager.setTracker(minecart.getUuid(),minecart.getId(), selectedColor);
+					player.sendMessage(Text.literal("Started tracking with color: " + selectedColor.getLabel()), true);
+					return ActionResult.SUCCESS;
 				}
 			}
-			}
+			return ActionResult.PASS;
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (MinecartVisualizerConfig.trackAllMinecart && client.world != null){
-				for (Entity entity : client.world.getEntities()){
-					if (entity instanceof HopperMinecartEntity && !MinecartVisualizerUtils.toUUIDList(hopperMinecartTrackers).contains(entity.getUuid())){
-						MinecartVisualizerCommands.setNewTracker(MinecartVisualizerUtils.getNextAvailableNumber(), MinecartVisualizerCommands.playerEntity, entity.getUuid());
-					}
-				}
+			if (client.world != null) {
+				TrackersManager.cleanInvalidTracker();
+				TrackersManager.tickCounter();
 			}
 		});
-
-
 	}
-
-	
 }
