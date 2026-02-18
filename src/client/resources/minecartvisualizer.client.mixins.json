@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "com.minecartvisualizer.mixin.client",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "AbstractMinecartEntityRendererMixin",
+    "ClientWorldAccessor",
+    "RenderLayersMixin",
+    "WorldRenderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "mixins": [
+    "EntityMixin",
+    "HopperMinecartEntityMixin"
+  ]
+}
