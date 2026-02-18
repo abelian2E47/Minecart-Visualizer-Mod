@@ -1,6 +1,5 @@
 # Minecart-Visualizer-Mod
-A comprehensive Minecraft client-side mod that provides advanced visualization and tracking tools for minecart systems.
-<img width="1500" height="1500" alt="icon" src="https://github.com/user-attachments/assets/ab31d6ad-5126-4b86-bf51-e495e99e76c5" />
+A Minecraft mod that provides visualization and tracking tools for minecart.
 
 ## ⌨️ Hotkeys
 * **C + V**: Open the configuration screen (Requires **YetAnotherConfigLib**).
