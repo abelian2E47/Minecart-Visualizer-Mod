@@ -1,7 +1,7 @@
 
 <img width="600" height="600" alt="icon" src="https://github.com/user-attachments/assets/47fcb45a-c9f3-47f0-8ad7-a0021477bd16" />
-# Minecart-Visualizer-Mod
 
+# Minecart-Visualizer-Mod
 A Minecraft mod that provides visualization and tracking tools for minecart.
 
 ## ⌨️ Hotkeys
