@@ -14,8 +14,8 @@ public class TrackerCounter {
     private final Map<Text, Integer> decrease = new HashMap<>();
     private final Map<Text, Integer> destroyedDrops = new HashMap<>();
     private int runTime;
-    private int avgLifetime;
-    private int totalUnloadedTrackers;
+    private double avgLifetime;
+    private int totalDestroyedTrackers;
     private boolean enable;
 
     public TrackerCounter(TrackerColor color){
@@ -50,9 +50,9 @@ public class TrackerCounter {
 
     public void recordTrackerRemoval(int trackerRunTime) {
         if (!enable) return;
-        totalUnloadedTrackers++;
-        double totalLifetime = (avgLifetime * (totalUnloadedTrackers - 1)) + trackerRunTime;
-        this.avgLifetime = (int) (totalLifetime / totalUnloadedTrackers);
+
+        totalDestroyedTrackers++;
+        this.avgLifetime += (trackerRunTime - avgLifetime) / totalDestroyedTrackers;
     }
 
     public void printCounterReport(ClientPlayerEntity player) {
@@ -70,9 +70,9 @@ public class TrackerCounter {
                 .append(Text.literal(" min\n").formatted(Formatting.GRAY)));
 
         report.append(Text.literal("Avg Lifetime: ").formatted(Formatting.GRAY)
-                .append(Text.literal(avgLifetime + " gt\n").formatted(Formatting.GOLD)));
+                .append(Text.literal(Math.round(avgLifetime) + " gt\n").formatted(Formatting.GOLD)));
 
-        report.append(Text.literal("Minecart Count: ").formatted(Formatting.GRAY)
+        report.append(Text.literal("Tracker Count: ").formatted(Formatting.GRAY)
                 .append(Text.literal(TrackersManager.getTrackerCount(color) + "").formatted(Formatting.LIGHT_PURPLE)));
 
         player.sendMessage(report, false);
@@ -98,6 +98,7 @@ public class TrackerCounter {
     public void reset(){
         runTime = 0;
         avgLifetime = 0;
+        totalDestroyedTrackers = 0;
         increase.clear();
         decrease.clear();
         destroyedDrops.clear();

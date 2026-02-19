@@ -7,6 +7,7 @@ import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Uuids;
 import net.minecraft.util.math.Vec3d;
 import java.util.ArrayList;
@@ -52,10 +53,23 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
         }
 
         if (this.velocity() == null) {
-            infoTexts.add(Text.translatable("info.minecartvisualizer.velocity").append(Text.literal("unknown")));
-        } else if (EnableFunctions[1]) {
             infoTexts.add(Text.translatable("info.minecartvisualizer.velocity")
-                    .append(FormatTools.formatVec(this.velocity(), accuracy, true)));
+                    .append(Text.literal("unknown").formatted(Formatting.GRAY)));
+        } else if (EnableFunctions[1]) {
+            Vec3d v = this.velocity();
+            MutableText velocityText = Text.translatable("info.minecartvisualizer.velocity");
+
+            if (Double.isInfinite(v.x) || Double.isInfinite(v.y) || Double.isInfinite(v.z)) {
+                velocityText.append(Text.literal("∞"));
+            }
+            else if (Double.isNaN(v.x) || Double.isNaN(v.y) || Double.isNaN(v.z)) {
+                velocityText.append(Text.literal("NaN"));
+            }
+            else {
+                velocityText.append(FormatTools.formatVec(v, accuracy, true));
+            }
+
+            infoTexts.add(velocityText);
         }
 
         if (EnableFunctions[2]) {

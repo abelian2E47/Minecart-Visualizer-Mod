@@ -61,6 +61,11 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean trackMinecartTrail = false;
     @SerialEntry public boolean outputWhenDestroyed = true;
     @SerialEntry public boolean outputWhenSlotChange = true;
+    @SerialEntry public boolean outputOnIncrease = true;
+    @SerialEntry public boolean outputOnDecrease = true;
+    @SerialEntry public boolean printInventory = true;
+    @SerialEntry public boolean printDuration = true;
+    @SerialEntry public boolean printPosition = true;
     @SerialEntry public int maxTrailPoints = 200;
 
     public static MinecartVisualizerConfig getInstance() {

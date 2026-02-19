@@ -154,6 +154,7 @@
 
         // 物品栏变动消息
         private void sendInventoryMessage(List<ItemStack> currentInv) {
+            var config = MinecartVisualizerConfig.getInstance();
             if (preChangeInv == null) return;
 
             MutableText detailLines = Text.empty();
@@ -168,13 +169,17 @@
 
                 ItemStack item = diff > 0 ? newItem : oldItem;
                 if (!shouldOutput(item)) continue;
+                if (diff > 0 && !config.outputOnIncrease) continue;
+                if (diff < 0 && !config.outputOnDecrease) continue;
                 hasVisibleChange = true;
 
+                if (config.printInventory){
                 detailLines.append(Text.literal("\n  ")
                         .append(Text.literal(diff > 0 ? "(+) " : "(-) ").formatted(diff > 0 ? Formatting.GREEN : Formatting.RED))
                         .append(item.getItemName().copy().formatted(Formatting.WHITE))
                         .append(Text.literal(" x" + Math.abs(diff)).formatted(Formatting.GRAY))
                         .append(Text.translatable("chat.minecartvisualizer.tracker.slot", i + 1).formatted(Formatting.DARK_AQUA)));
+                }
             }
 
             if (!hasVisibleChange) {
@@ -186,29 +191,30 @@
                     .append(Text.literal("[" + uuid.toString().substring(0, 4) + "] ").formatted(Formatting.GRAY))
                     .append(Text.translatable("chat.minecartvisualizer.tracker.collected", (lastChangeTick - firstChangeTick + 1)).formatted(Formatting.GOLD));
 
-            double dist = startPos.distanceTo(leastPos);
-            MutableText posText;
+            if (config.printPosition) {
+                double dist = startPos.distanceTo(leastPos);
+                MutableText posText;
 
-            if (dist > 1) {
-                String moveStr = String.format(" (%.1f, %.1f -> %.1f, %.1f)",
-                        startPos.x, startPos.z, leastPos.x, leastPos.z);
-                posText = Text.literal(moveStr);
-            } else {
-                String atStr = String.format("(%.1f, %.1f)", leastPos.x, leastPos.z);
-                posText = Text.literal(atStr);
+                if (dist > 1) {
+                    String moveStr = String.format(" (%.1f, %.1f -> %.1f, %.1f)", startPos.x, startPos.z, leastPos.x, leastPos.z);
+                    posText = Text.literal(moveStr);
+                } else {
+                    String atStr = String.format("(%.1f, %.1f)", leastPos.x, leastPos.z);
+                    posText = Text.literal(atStr);
+                }
+
+                String tpCommand = String.format("/tp @s %.1f %.1f %.1f",
+                        dist > 1 ? leastPos.x : startPos.x,
+                        dist > 1 ? leastPos.y : startPos.y,
+                        dist > 1 ? leastPos.z : startPos.z);
+
+                posText.formatted(Formatting.DARK_AQUA)
+                        .styled(style -> style
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, tpCommand))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.translatable("chat.minecartvisualizer.tracker.tp_hover"))));
+                msg.append(posText);
             }
-
-            String tpCommand = String.format("/tp @s %.1f %.1f %.1f",
-                    dist > 1 ? leastPos.x : startPos.x,
-                    dist > 1 ? leastPos.y : startPos.y,
-                    dist > 1 ? leastPos.z : startPos.z);
-
-            posText.formatted(Formatting.DARK_AQUA)
-                    .styled(style -> style
-                            .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, tpCommand))
-                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.translatable("chat.minecartvisualizer.tracker.tp_hover"))));
-
-            msg.append(posText).append(detailLines);
+            msg.append(detailLines);
             player.sendMessage(msg, false);
 
             resetTrackingState();
@@ -216,37 +222,44 @@
 
         //矿车摧毁
         private void sendDestroyedMessage() {
-            long duration = runTime;
+            var config = MinecartVisualizerConfig.getInstance();
+
             MutableText message = Text.literal("■ ").withColor(trackerColor.getHex());
 
             message.append(Text.literal("[" + uuid.toString().substring(0, 4) + "] ").formatted(Formatting.GRAY));
             message.append(Text.translatable("chat.minecartvisualizer.tracker.removed").formatted(Formatting.RED));
 
-            if (leastPos != null) {
-                String posStr = String.format("%.1f %.1f %.1f", leastPos.x, leastPos.y, leastPos.z);
+            if (config.printPosition) {
+                if (leastPos != null) {
+                    String posStr = String.format("%.1f %.1f %.1f", leastPos.x, leastPos.y, leastPos.z);
+                    String displayStr = String.format("(%.1f, %.1f, %.1f)", leastPos.x, leastPos.y, leastPos.z);
 
-                String displayStr = String.format("(%.1f, %.1f, %.1f)", leastPos.x, leastPos.y, leastPos.z);
-
-                message.append(Text.literal(displayStr)
-                        .formatted(Formatting.WHITE, Formatting.UNDERLINE)
-                        .styled(style -> style
-                                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/tp @s " + posStr))
-                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.translatable("chat.minecartvisualizer.tracker.tp_hover")))));
-            } else {
-                message.append(Text.translatable("chat.minecartvisualizer.tracker.unknown_location").formatted(Formatting.ITALIC));
+                    message.append(Text.literal(" " + displayStr)
+                            .formatted(Formatting.WHITE, Formatting.UNDERLINE)
+                            .styled(style -> style
+                                    .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/tp @s " + posStr))
+                                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.translatable("chat.minecartvisualizer.tracker.tp_hover")))));
+                } else {
+                    message.append(Text.translatable("chat.minecartvisualizer.tracker.unknown_location").formatted(Formatting.ITALIC));
+                }
             }
 
-            if (lastInv != null && !lastInv.isEmpty()) {
+            if (config.printInventory && lastInv != null && !lastInv.isEmpty()) {
                 for (int i = 0; i < lastInv.size(); i++) {
                     ItemStack item = lastInv.get(i);
                     if (!item.isEmpty()) {
-                        MutableText itemLine = Text.translatable("chat.minecartvisualizer.tracker.inventory_line", i + 1, item.getCount()).formatted(Formatting.GRAY)
-                                .append(item.getItemName().copy().formatted(Formatting.AQUA));
+                        MutableText itemLine = Text.literal("\n  ")
+                                .append(item.getItemName().copy().formatted(Formatting.WHITE))
+                                .append(Text.literal(" x" + item.getCount()).formatted(Formatting.GRAY))
+                                .append(Text.translatable("chat.minecartvisualizer.tracker.slot", i + 1).formatted(Formatting.DARK_AQUA));
+
                         message.append(itemLine);
                     }
                 }
             }
-            message.append(Text.translatable("chat.minecartvisualizer.tracker.duration", duration).formatted(Formatting.GOLD));
+            if (config.printDuration) {
+                message.append(Text.literal("\n  ")).append(Text.translatable("chat.minecartvisualizer.tracker.duration", runTime).formatted(Formatting.GOLD));
+            }
 
             player.sendMessage(message, false);
         }
