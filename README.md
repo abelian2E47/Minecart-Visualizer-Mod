@@ -1,20 +1,64 @@
+
+<img width="600" height="600" alt="icon" src="https://github.com/user-attachments/assets/47fcb45a-c9f3-47f0-8ad7-a0021477bd16" />
+
 # Minecart-Visualizer-Mod
-A Minecraft mod that provides some minecart debugging tools.
+A Minecraft mod that provides visualization and tracking tools for minecart.
 
-## Main Command
+## ⌨️ Hotkeys
+* **C + V**: Open the configuration screen (Requires **YetAnotherConfigLib**).
 
-/minecartvisualizer: Toggles the main functionality of the mod on or off.
+## 🛠 Features
 
-/minecartvisualizer setting InfoTextDisplay : Toggles the display of real-time information for minecarts, including their position, velocity, or yaw.
+### 🛰️ HopperMinecartTracker
+Real-time monitoring of Hopper Minecarts with detailed chat feedback:
+* **Inventory Changes**: Receive notifications whenever items are added or removed from a minecart.
+* <<img width="1272" height="182" alt="image" src="https://github.com/user-attachments/assets/f875820e-fb93-4c87-befe-f52fef8946c5" />
+* **Destruction Alerts**: Get notified immediately when a minecart is destroyed or removed from the world.
+* <img width="1375" height="139" alt="image" src="https://github.com/user-attachments/assets/520431db-6786-4c68-9986-3f29eb4ea7cb" />
 
-/minecartvisualizer setting LockedDisplay: Renders a box for activated hopper minecarts, making it easy to see which are enabled.
 
-/minecartvisualizer setting InventoryDisplay: Toggles the display of a minecart's inventory contents directly in the world.
+### 🔍 Advanced Filtering
+Control exactly what information reaches your chat bar. The Filter system supports multi-color tracking:
+* **WhiteList**: Only items in the whitelist will trigger chat notifications.
+* **BlackList**: Items in the blacklist will be ignored by the tracker.
 
-/minecartvisualizer option MergeStackingMinecartInfo: Merges the displayed information for multiple minecarts that are stacked on the same rail, preventing clutter.
+### 📊 Item Counter
+Designed for technical players to measure system efficiency:
+* Tracks the total throughput of items for specific tracker colors over a period of time.
+* Useful for calculating item-per-hour (IPH) rates in sorting systems or farms.
+<img width="948" height="450" alt="image" src="https://github.com/user-attachments/assets/f11bf9c5-17ad-4f70-904a-3fca38b8927b" />
 
-/minecartvisualizer tracker HopperMinecartTracker: Sets or removes a tracker for a specific hopper minecart, allowing you to follow its information in real time.
+---
 
-/minecartvisualizer argument InfoRenderDistance: Sets max rendering distance
+## 💻 Command Reference
+The root command is `/MinecartVisualizer`. Running it without arguments toggles the main visualization on/off.
 
-/minecartvisualizer argument Accuracy: Set Max accuracy (decimal places)
+### 1. Settings (`/MinecartVisualizer setting`)
+Quickly toggle rendering options:
+* `InfoTextDisplay <true/false>`: Toggle the text overlay above minecarts.
+* `AlwaysFacingThePlayer <true/false>`: Toggle whether the info text rotates to face you.
+* `MergeStackingMinecartInfo <true/false>`: Consolidate info displays for stacked minecarts.
+
+### 2. Filter(`/MinecartVisualizer filter <color> <white/black>`)
+Configure item filtering for specific tracker colors:
+* **Sub-commands**:
+    * `add <item>`: Add a specific item to the list.
+    * `add hand`: Add the item currently in your main hand to the list.
+    * `remove <item/hand>`: Remove the specified item from the list.
+    * `clear`: Wipe the entire list for that color/type.
+    * `list`: Display all items currently in the specified filter.
+
+### 3. Counters (`/MinecartVisualizer counter <color>`)
+Collect and report statistical data for hopper minecarts over a custom duration:
+* `reset`: Clear all counted data for the specified color.
+* `print`: Output a detailed report of collected item counts to the chat.
+* Execute the base command `/MinecartVisualizer counter <color>` to toggle the counter state.
+
+### 4. Point Management (`/MinecartVisualizer point`)
+Mark specific world coordinates for targeted tracking:
+* `add <color> <x> <y> <z>`: Add a tracking point at the specified coordinates.
+* `add <color> look`: Add a tracking point at the block you are currently looking at.
+* `remove <pos/color>`: Remove points by specific coordinate string or clear an entire color group.
+* `list`: Show all registered tracking points.
+* `clear`: Remove all points from the system.
+
