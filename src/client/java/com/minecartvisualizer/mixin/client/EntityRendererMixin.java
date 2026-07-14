@@ -27,7 +27,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
+import java.util.WeakHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -36,7 +36,7 @@ import static com.minecartvisualizer.InfoRenderer.getAdaptiveColumns;
 @Mixin(EntityRenderer.class)
 public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> {
     @Unique
-    private final Map<S, T> stateToEntity = new IdentityHashMap<>();
+    private final Map<S, T> stateToEntity = new WeakHashMap<>();
 
     @Inject(
             method = "updateRenderState",

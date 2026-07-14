@@ -241,4 +241,13 @@ public class MinecartClientHandler {
         TNT_MINECART_DATA.keySet().removeIf(uuid -> !MinecartVisualizerUtils.isEntityLoaded(uuid));
         minecarts.keySet().removeIf(uuid -> !MinecartVisualizerUtils.isEntityLoaded(uuid));
     }
+
+    public static void clearAll() {
+        MINECART_DATA.clear();
+        HOPPER_MINECART_DATA.clear();
+        TNT_MINECART_DATA.clear();
+        minecarts.clear();
+        uuidToGroup.clear();
+        currentLeaders.clear();
+    }
 }

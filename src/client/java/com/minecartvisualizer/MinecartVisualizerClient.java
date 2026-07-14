@@ -6,6 +6,8 @@ import com.minecartvisualizer.config.MinecartVisualizerConfigScreen;
 import com.minecartvisualizer.tracker.TrackerColor;
 import com.minecartvisualizer.tracker.TrackersManager;
 import net.fabricmc.api.ClientModInitializer;
+import com.minecartvisualizer.tracker.TrackerPointsManager;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -32,6 +34,12 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
 			MinecartVisualizerConfig.HANDLER.save();
+		});
+
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			MinecartClientHandler.clearAll();
+			TrackersManager.clearAll();
+			TrackerPointsManager.getInstance().clearAllPoints();
 		});
 
 		MinecartClientHandler.register();

@@ -98,5 +98,16 @@ public class TrackersManager {
         });
     }
 
+    public static void clearAll() {
+        trackers.clear();
+        for (TrackerCounter counter : counters.values()) {
+            counter.reset();
+        }
+        for (TrackerFilter filter : filters.values()) {
+            filter.clearWhiteList();
+            filter.clearBlackList();
+        }
+    }
+
 
 }

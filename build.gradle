@@ -82,3 +82,25 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+// Fix launch.cfg paths when project directory contains spaces (Windows)
+tasks.register('fixLaunchCfg') {
+    doLast {
+        def batFile = file('fix_launch_cfg.bat')
+        if (!batFile.exists()) return
+
+        def pb = new ProcessBuilder(batFile.absolutePath)
+        pb.directory(project.projectDir)
+        pb.redirectErrorStream(true)
+        def proc = pb.start()
+        def output = proc.inputStream.text
+        proc.waitFor()
+        if (!output.empty) println output.trim()
+    }
+}
+
+afterEvaluate {
+    tasks.named('genSources').configure {
+        finalizedBy 'fixLaunchCfg'
+    }
+}

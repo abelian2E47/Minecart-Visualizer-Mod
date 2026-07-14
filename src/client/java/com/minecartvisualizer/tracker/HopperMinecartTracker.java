@@ -67,8 +67,8 @@
                     }
                     recordCounterStats(lastInv, RecordType.DROPS, null);
                     TrackersManager.getCounter(trackerColor).recordTrackerRemoval((int) (currentTime-trackStartTime));
-                    this.removed = true;
                 }
+                this.removed = true;
                 return;
             }
 
