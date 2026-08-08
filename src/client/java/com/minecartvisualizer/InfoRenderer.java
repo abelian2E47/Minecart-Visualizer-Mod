@@ -23,6 +23,7 @@ import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.vehicle.HopperMinecartEntity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.item.ItemStack;
@@ -287,13 +288,15 @@ public class InfoRenderer {
         VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
         boolean hasTarget = false;
 
+        HopperMinecartEntity hopperMinecart = (HopperMinecartEntity) entity;
+
         Box extractionArea = new Box(
                 entity.getX() - 0.5, entity.getY() + 1, entity.getZ() - 0.5,
                 entity.getX() + 0.5, entity.getY() + 2, entity.getZ() + 0.5
         );
 
         //方块实体
-        BlockPos targetPos = BlockPos.ofFloored(entity.getX(), entity.getY() + 1, entity.getZ());
+        BlockPos targetPos = BlockPos.ofFloored(hopperMinecart.getHopperX(), hopperMinecart.getHopperY() + 1.0, hopperMinecart.getHopperZ());
         BlockState state = world.getBlockState(targetPos);
 
         if (world.getBlockEntity(targetPos) != null) {
