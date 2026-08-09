@@ -51,6 +51,10 @@
   "yacl.option.hopper_locked": "Hopper: Show Locked Status",
   "yacl.option.hopper_inventory": "Hopper: Show Inventory",
   "yacl.option.item_stack_count": "Hopper: Show Item Stack Count",
+  "yacl.option.inventory_slot_size": "Hopper: Inventory Slot Size",
+  "yacl.option.inventory_slot_size.desc": "Scales the rendered inventory slot backgrounds.",
+  "yacl.option.inventory_item_size": "Hopper: Item Size",
+  "yacl.option.inventory_item_size.desc": "Scales the item models inside rendered inventory slots.",
   "yacl.option.tnt_fuse": "TNT: Show Fuse Ticks",
   "yacl.option.tnt_wobble": "TNT: Show Wobble Value",
 

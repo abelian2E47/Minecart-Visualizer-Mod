@@ -50,6 +50,8 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean enableHopperMinecartInventoryDisplay = true;
     @SerialEntry public boolean enableItemStackCountDisplay = true;
     @SerialEntry public int inventoryCols = 5;
+    @SerialEntry public float inventorySlotSize = 1.0f;
+    @SerialEntry public float inventoryItemSize = 1.0f;
 
     // --- TNT 矿车专项 ---
     @SerialEntry public boolean enableTNTFuseTicksDisplay = true;

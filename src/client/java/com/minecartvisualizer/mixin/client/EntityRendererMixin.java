@@ -107,11 +107,9 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                     if (data != null) {
                         List<ItemStack> filteredItems = InfoRenderer.filterItems(data.items());
                         int finalCols = getFinalCols.apply(totalSlots);
-                        InfoRenderer.renderInventory(
+                        InfoRenderer.queueInventory(
                                 filteredItems, entity.getEntityWorld(),
-                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols,
-                                cameraX, cameraY, cameraZ,
-                                matrices, vertexConsumers, queue, isLocked
+                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
                         );
                     }
                 } else {
@@ -125,11 +123,9 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                     if (config.maxInventorySlotsToRender == 0 || totalSlots <= config.maxInventorySlotsToRender) {
                         List<ItemStack> filteredItems = InfoRenderer.filterItems(allItems);
                         int finalCols = getFinalCols.apply(totalSlots);
-                        InfoRenderer.renderInventory(
+                        InfoRenderer.queueInventory(
                                 filteredItems, entity.getEntityWorld(),
-                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols,
-                                cameraX, cameraY, cameraZ,
-                                matrices, vertexConsumers, queue, isLocked
+                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
                         );
                     }
                 }
@@ -137,11 +133,9 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 int totalSlots = slotsPerMinecart;
                 List<ItemStack> filteredItems = InfoRenderer.filterItems(hopperMinecartData.items());
                 int finalCols = getFinalCols.apply(totalSlots);
-                InfoRenderer.renderInventory(
+                InfoRenderer.queueInventory(
                         filteredItems, entity.getEntityWorld(),
-                        renderState.x, renderState.y, renderState.z, totalSlots, finalCols,
-                        cameraX, cameraY, cameraZ,
-                        matrices, vertexConsumers, queue, isLocked
+                        renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
                 );
             }
         }

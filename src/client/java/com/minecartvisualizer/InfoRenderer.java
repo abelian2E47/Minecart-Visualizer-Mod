@@ -7,19 +7,9 @@ import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.item.ItemModelManager;
-import net.minecraft.client.model.Model;
-import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.render.*;
-import net.minecraft.client.render.block.MovingBlockRenderState;
-import net.minecraft.client.render.command.ModelCommandRenderer;
 import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.client.render.command.RenderCommandQueue;
-import net.minecraft.client.render.entity.state.EntityRenderState;
 import net.minecraft.client.render.item.ItemRenderState;
-import net.minecraft.client.render.model.BakedQuad;
-import net.minecraft.client.render.model.BlockStateModel;
-import net.minecraft.client.render.state.CameraRenderState;
-import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -36,9 +26,7 @@ import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.World;
 import net.minecraft.client.render.RenderLayers;
 import org.joml.Matrix4f;
-import org.joml.Quaternionf;
 import org.joml.Vector3f;
-import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Unique;
 
 import java.util.*;
@@ -80,46 +68,87 @@ public class InfoRenderer {
         }
     }
 
-    public static void renderInventory(List<ItemStack> items, World world,
-                                       double lerpedX, double lerpedY, double lerpedZ,
-                                       int totalSlots, int cols,
-                                       double cameraX, double cameraY, double cameraZ,
-                                       MatrixStack matrices, VertexConsumerProvider vertexConsumers,
-                                       OrderedRenderCommandQueue itemRenderQueue,
-                                       boolean isLocked) {
+    private static final List<QueuedInventory> queuedInventories = new ArrayList<>();
+
+    public static void queueInventory(List<ItemStack> items, World world,
+                                      double lerpedX, double lerpedY, double lerpedZ,
+                                      int totalSlots, int cols, boolean isLocked) {
+        if (totalSlots > 0) {
+            queuedInventories.add(new QueuedInventory(items, world, lerpedX, lerpedY, lerpedZ, totalSlots, cols, isLocked));
+        }
+    }
+
+    public static void beginInventoryRenderFrame() {
+        queuedInventories.clear();
+    }
+
+    public static boolean hasQueuedInventories() {
+        return !queuedInventories.isEmpty();
+    }
+
+    public static void renderQueuedInventories() {
+        if (queuedInventories.isEmpty()) {
+            return;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+        MatrixStack matrices = new MatrixStack();
+        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
+        OrderedRenderCommandQueue itemRenderQueue = client.gameRenderer.getEntityRenderCommandQueue();
+
+        try {
+            for (QueuedInventory inventory : queuedInventories) {
+                renderInventory(inventory, cameraPos, matrices, vertexConsumers, itemRenderQueue);
+            }
+
+            client.gameRenderer.getEntityRenderDispatcher().render();
+            vertexConsumers.draw();
+        } finally {
+            queuedInventories.clear();
+        }
+    }
+
+    private static void renderInventory(QueuedInventory inventory, Vec3d cameraPos,
+                                        MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers,
+                                        OrderedRenderCommandQueue itemRenderQueue) {
         var config = MinecartVisualizerConfig.getInstance();
-        if (totalSlots <= 0) return;
-        double itemY = lerpedY + 1.4;
         Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
         matrices.push();
-        matrices.translate(lerpedX - cameraX, itemY - cameraY, lerpedZ - cameraZ);
+        matrices.translate(inventory.lerpedX() - cameraPos.x, inventory.lerpedY() + 0.4 - cameraPos.y, inventory.lerpedZ() - cameraPos.z);
         matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-camera.getYaw() + 180));
         if (config.alwaysFacingThePlayer) {
             matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-camera.getPitch()));
         }
 
-        for (int i = 0; i < totalSlots; i++) {
-            int row = i / cols;
-            int col = i % cols;
-            renderSlotBackground(row, col, cols, matrices, vertexConsumers, isLocked);
+        for (int i = 0; i < inventory.totalSlots(); i++) {
+            int row = i / inventory.cols();
+            int col = i % inventory.cols();
+            renderSlotBackground(row, col, inventory.cols(), matrices, vertexConsumers, inventory.isLocked(), config.inventorySlotSize);
         }
+        vertexConsumers.drawCurrentLayer();
 
-        for (int i = 0; i < items.size(); i++) {
-            ItemStack item = items.get(i);
+        for (int i = 0; i < inventory.items().size(); i++) {
+            ItemStack item = inventory.items().get(i);
             if (item.isEmpty()) continue;
-            int row = i / cols;
-            int col = i % cols;
-            renderSlotItem(item, row, col, cols, matrices, vertexConsumers, itemRenderQueue, world, config.enableItemStackCountDisplay);
+            int row = i / inventory.cols();
+            int col = i % inventory.cols();
+            renderSlotItem(item, row, col, inventory.cols(), matrices, vertexConsumers, itemRenderQueue, inventory.world(), config.enableItemStackCountDisplay, config.inventorySlotSize, config.inventoryItemSize);
         }
         matrices.pop();
     }
 
+    private record QueuedInventory(List<ItemStack> items, World world,
+                                   double lerpedX, double lerpedY, double lerpedZ,
+                                   int totalSlots, int cols, boolean isLocked) {
+    }
+
     private static void renderSlotBackground(int row, int col, int cols,
                                              MatrixStack matrices, VertexConsumerProvider vertexConsumers,
-                                             boolean isLocked) {
+                                             boolean isLocked, float slotSize) {
         matrices.push();
-        double xOffset = (col - (cols - 1) / 2.0) * 0.5;
-        double yOffset = row * 0.5 + 1;
+        double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
+        double yOffset = row * 0.5 * slotSize + 1;
         matrices.translate(xOffset, yOffset, 0.0);
 
         VertexConsumer buffer = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_BACKGROUND);
@@ -135,28 +164,28 @@ public class InfoRenderer {
         float g2 = changeColor ? 0.0f : 0.9f;
         float b2 = changeColor ? 0.0f : 0.9f;
 
-        drawRect(matrix, buffer, 0.19f, -0.06f, r1, g1, b1, 0.25f);//背景
-        drawRect(matrix, buffer, 0.22f, -0.08f, r2, g2, b2, 0.8f);//边框
+        drawRect(matrix, buffer, 0.19f * slotSize, -0.06f * slotSize, r1, g1, b1, 0.25f);//背景
+        drawRect(matrix, buffer, 0.22f * slotSize, -0.08f * slotSize, r2, g2, b2, 0.8f);//边框
         matrices.pop();
     }
 
     private static void renderSlotItem(ItemStack item, int row, int col, int cols,
                                        MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                        OrderedRenderCommandQueue itemRenderQueue, World world,
-                                       boolean enableCount) {
+                                       boolean enableCount, float slotSize, float itemSize) {
         TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
         ItemModelManager itemModelManager = MinecraftClient.getInstance().getItemModelManager();
 
         matrices.push();
-        double xOffset = (col - (cols - 1) / 2.0) * 0.5;
-        double yOffset = row * 0.5 + 1;
+        double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
+        double yOffset = row * 0.5 * slotSize + 1;
         matrices.translate(xOffset, yOffset, 0.0);
 
         matrices.push();
-        if (item.getItem() instanceof BlockItem){
-            matrices.scale(-0.53f, 0.53f, 0.53f);
-        }else {
-            matrices.scale(-0.4f, 0.4f, 0.4f);
+        if (item.getItem() instanceof BlockItem) {
+            matrices.scale(-0.53f * itemSize, 0.53f * itemSize, 0.53f * itemSize);
+        } else {
+            matrices.scale(-0.4f * itemSize, 0.4f * itemSize, 0.4f * itemSize);
         }
 
 
@@ -171,16 +200,15 @@ public class InfoRenderer {
         );
 
         if (!renderState.isEmpty()) {
-            OrderedRenderCommandQueue topQueue = wrapForItemTopRendering(itemRenderQueue, item);
-            renderState.render(matrices, topQueue, 15728880, OverlayTexture.DEFAULT_UV, 0);
+            renderState.render(matrices, itemRenderQueue, 15728880, OverlayTexture.DEFAULT_UV, 0);
         }
         matrices.pop();
 
         if (enableCount && item.getCount() > 1) {
             String countString = String.valueOf(item.getCount());
             matrices.push();
-            matrices.translate(0.12, -0.1, 0.1);
-            matrices.scale(0.02f, -0.02f, 0.02f);
+            matrices.translate(0.12 * slotSize, -0.1 * slotSize, 0.1);
+            matrices.scale(0.02f * itemSize, -0.02f * itemSize, 0.02f * itemSize);
 
             textRenderer.draw(countString, 0.0f, 0.0f, 0xFFFFFFFF, false,
                     matrices.peek().getPositionMatrix(), vertexConsumers,
@@ -192,75 +220,6 @@ public class InfoRenderer {
     }
 
 
-    private static OrderedRenderCommandQueue wrapForItemTopRendering(OrderedRenderCommandQueue delegate,ItemStack stack) {
-        return new OrderedRenderCommandQueue() {
-            @Override
-            public RenderCommandQueue getBatchingQueue(int order) {
-                return delegate.getBatchingQueue(order);
-            }
-
-            @Override
-            public void submitItem(MatrixStack matrices, ItemDisplayContext displayContext, int light, int overlay, int outlineColors, int[] tintLayers, List<BakedQuad> quads, RenderLayer renderLayer, ItemRenderState.Glint glintType) {
-                if (stack.getItem() instanceof BlockItem){
-                    delegate.submitItem(matrices, displayContext, light, overlay, outlineColors, tintLayers, quads, CustomRenderLayers.CUSTOM_BLOCK, glintType);
-                }else {
-                    delegate.submitItem(matrices, displayContext, light, overlay, outlineColors, tintLayers, quads, CustomRenderLayers.CUSTOM_ITEM, glintType);
-                }
-            }
-
-            @Override
-            public void submitCustom(MatrixStack matrices, RenderLayer renderLayer, Custom customRenderer) {
-                delegate.submitCustom(matrices, CustomRenderLayers.CUSTOM_BLOCK, customRenderer);
-            }
-
-            @Override
-            public void submitCustom(LayeredCustom customRenderer) {
-                delegate.submitCustom(customRenderer);
-            }
-
-            @Override
-            public <S> void submitModel(Model<? super S> model, S state, MatrixStack matrices, RenderLayer renderLayer, int light, int overlay, int tintedColor, @Nullable Sprite sprite, int outlineColor, ModelCommandRenderer.CrumblingOverlayCommand crumblingOverlay) {
-                delegate.submitModel(model, state, matrices, CustomRenderLayers.CUSTOM_BLOCK, light, overlay, tintedColor, sprite, outlineColor, crumblingOverlay);
-            }
-
-            @Override
-            public void submitModelPart(ModelPart part, MatrixStack matrices, RenderLayer renderLayer, int light, int overlay, @Nullable Sprite sprite, boolean sheeted, boolean hasGlint, int tintedColor, ModelCommandRenderer.CrumblingOverlayCommand crumblingOverlay, int i) {
-                delegate.submitModelPart(part, matrices, CustomRenderLayers.CUSTOM_BLOCK, light, overlay, sprite, sheeted, hasGlint, tintedColor, crumblingOverlay, i);
-            }
-
-            @Override
-            public void submitLeash(MatrixStack matrices, EntityRenderState.LeashData leashData) { delegate.submitLeash(matrices, leashData); }
-
-            @Override
-            public void submitBlock(MatrixStack matrices, BlockState state, int light, int overlay, int outlineColor) {
-                delegate.submitBlock(matrices, state, light, overlay, outlineColor);
-            }
-
-            @Override
-            public void submitMovingBlock(MatrixStack matrices, MovingBlockRenderState state) { delegate.submitMovingBlock(matrices, state); }
-
-            @Override
-            public void submitBlockStateModel(MatrixStack matrices, RenderLayer renderLayer, BlockStateModel model, float r, float g, float b, int light, int overlay, int outlineColor) {
-                delegate.submitBlockStateModel(matrices, CustomRenderLayers.CUSTOM_BLOCK, model, r, g, b, light, overlay, outlineColor);
-            }
-
-            @Override
-            public void submitShadowPieces(MatrixStack matrices, float shadowRadius, List<EntityRenderState.ShadowPiece> shadowPieces) { delegate.submitShadowPieces(matrices, shadowRadius, shadowPieces); }
-
-            @Override
-            public void submitLabel(MatrixStack matrices, Vec3d pos, int color, Text text, boolean seeThrough, int light, double squaredDistanceToCamera, CameraRenderState cameraState) {
-                delegate.submitLabel(matrices, pos, color, text, seeThrough, light, squaredDistanceToCamera, cameraState);
-            }
-
-            @Override
-            public void submitText(MatrixStack matrices, float x, float y, OrderedText text, boolean dropShadow, TextRenderer.TextLayerType layerType, int light, int color, int backgroundColor, int outlineColor) {
-                delegate.submitText(matrices, x, y, text, dropShadow, layerType, light, color, backgroundColor, outlineColor);
-            }
-
-            @Override
-            public void submitFire(MatrixStack matrices, EntityRenderState renderState, Quaternionf rotation) {}
-        };
-    }
 
     public static void renderHopperRanges(Entity entity, double cameraX, double cameraY, double cameraZ,
                                           MatrixStack matrices, VertexConsumerProvider vertexConsumers) {

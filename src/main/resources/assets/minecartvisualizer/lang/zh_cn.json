@@ -51,6 +51,10 @@
   "yacl.option.hopper_locked": "漏斗矿车：显示锁定状态",
   "yacl.option.hopper_inventory": "漏斗矿车：显示物品栏",
   "yacl.option.item_stack_count": "漏斗矿车: 显示物品堆叠数",
+  "yacl.option.inventory_slot_size": "漏斗矿车：物品栏格子大小",
+  "yacl.option.inventory_slot_size.desc": "缩放渲染的物品栏背景格子。",
+  "yacl.option.inventory_item_size": "漏斗矿车：物品大小",
+  "yacl.option.inventory_item_size.desc": "缩放物品栏格子内渲染的物品模型。",
   "yacl.option.tnt_fuse": "TNT矿车：显示引信",
   "yacl.option.tnt_wobble": "TNT矿车：显示晃动值",
 

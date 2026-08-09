@@ -2,6 +2,7 @@ package com.minecartvisualizer.config;
 
 import dev.isxander.yacl3.api.*;
 import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
+import dev.isxander.yacl3.api.controller.FloatSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.TickBoxControllerBuilder;
@@ -201,6 +202,22 @@ public class MinecartVisualizerConfigScreen {
                                         .name(Text.translatable("yacl.option.hopper_inventory"))
                                         .binding(true, () -> config.enableHopperMinecartInventoryDisplay, v -> config.enableHopperMinecartInventoryDisplay = v)
                                         .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Float>createBuilder()
+                                        .name(Text.translatable("yacl.option.inventory_slot_size"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.inventory_slot_size.desc")))
+                                        .binding(1.0f, () -> config.inventorySlotSize, v -> config.inventorySlotSize = v)
+                                        .controller(opt -> FloatSliderControllerBuilder.create(opt)
+                                                .range(0.5f, 2.0f)
+                                                .step(0.05f))
+                                        .build())
+                                .option(Option.<Float>createBuilder()
+                                        .name(Text.translatable("yacl.option.inventory_item_size"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.inventory_item_size.desc")))
+                                        .binding(1.0f, () -> config.inventoryItemSize, v -> config.inventoryItemSize = v)
+                                        .controller(opt -> FloatSliderControllerBuilder.create(opt)
+                                                .range(0.5f, 2.0f)
+                                                .step(0.05f))
                                         .build())
                                 .option(Option.<Boolean>createBuilder()
                                         .name(Text.translatable("yacl.option.item_stack_count"))
