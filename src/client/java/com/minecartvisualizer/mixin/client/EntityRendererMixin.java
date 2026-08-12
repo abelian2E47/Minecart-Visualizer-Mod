@@ -141,7 +141,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         }
 
         if (!isLocked && config.highlightExtractionTargets) {
-            boolean hasTargets = InfoRenderer.highlightExtractionTargets(entity, cameraX, cameraY, cameraZ, matrices, vertexConsumers);
+            boolean hasTargets = InfoRenderer.queueExtractionTargets(entity);
             if (!hasTargets && config.renderHopperRanges) {
                 InfoRenderer.renderHopperRanges(entity, cameraX, cameraY, cameraZ, matrices, vertexConsumers);
             }
@@ -218,6 +218,12 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 String shortUuid = tracker.getShortUuid();
                 TrackerColor trackerColor = tracker.getTrackerColor();
                 infoTexts.add(Text.literal("ID: " + shortUuid).withColor(trackerColor.getHex()));
+            }
+        }
+
+        if (entity instanceof HopperMinecartEntity){
+            if (MinecartClientHandler.getHopperMinecartData(entity.getUuid()).extract()){
+                infoTexts.add(Text.literal("Working").formatted(Formatting.YELLOW));
             }
         }
 

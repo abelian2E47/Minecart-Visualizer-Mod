@@ -32,23 +32,23 @@ public abstract class WorldRenderMixin {
             method = "render",
             at = @At("HEAD")
     )
-    private void clearQueuedInventories(
+    private void clearQueuedTopRenderContent(
             ObjectAllocator allocator, RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera,
             Matrix4f positionMatrix, Matrix4f basicProjectionMatrix, Matrix4f projectionMatrix,
             GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci
     ) {
-        InfoRenderer.beginInventoryRenderFrame();
+        InfoRenderer.beginTopRenderFrame();
     }
     @Inject(
             method = "render",
             at = @At("TAIL")
     )
-    private void renderQueuedInventories(
+    private void renderQueuedTopRenderContent(
             ObjectAllocator allocator, RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera,
             Matrix4f positionMatrix, Matrix4f basicProjectionMatrix, Matrix4f projectionMatrix,
             GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci
     ) {
-        if (!InfoRenderer.hasQueuedInventories()) {
+        if (!InfoRenderer.hasQueuedTopRenderContent()) {
             return;
         }
 
@@ -58,6 +58,7 @@ public abstract class WorldRenderMixin {
         try {
             MinecraftClient client = MinecraftClient.getInstance();
             RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(client.getFramebuffer().getDepthAttachment(), 1.0);
+            InfoRenderer.renderQueuedTargetBoxes();
             InfoRenderer.renderQueuedInventories();
         } finally {
             modelViewStack.popMatrix();

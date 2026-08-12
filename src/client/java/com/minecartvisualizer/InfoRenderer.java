@@ -18,8 +18,6 @@ import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.MutableText;
-import net.minecraft.text.OrderedText;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.*;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
@@ -37,7 +35,7 @@ public class InfoRenderer {
     public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer) {
         var config = MinecartVisualizerConfig.getInstance();
         TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
-        float baseHeight = entity.getHeight() + 0.3f;
+        float baseHeight = entity.getHeight() + 0.5f;
         Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
         float cameraYaw = camera.getYaw();
         float cameraPitch = camera.getPitch();
@@ -69,6 +67,7 @@ public class InfoRenderer {
     }
 
     private static final List<QueuedInventory> queuedInventories = new ArrayList<>();
+    private static final List<QueuedTargetBox> queuedTargetBoxes = new ArrayList<>();
 
     public static void queueInventory(List<ItemStack> items, World world,
                                       double lerpedX, double lerpedY, double lerpedZ,
@@ -78,12 +77,13 @@ public class InfoRenderer {
         }
     }
 
-    public static void beginInventoryRenderFrame() {
+    public static void beginTopRenderFrame() {
         queuedInventories.clear();
+        queuedTargetBoxes.clear();
     }
 
-    public static boolean hasQueuedInventories() {
-        return !queuedInventories.isEmpty();
+    public static boolean hasQueuedTopRenderContent() {
+        return !queuedInventories.isEmpty() || !queuedTargetBoxes.isEmpty();
     }
 
     public static void renderQueuedInventories() {
@@ -107,6 +107,26 @@ public class InfoRenderer {
         } finally {
             queuedInventories.clear();
         }
+
+    }
+    public static void renderQueuedTargetBoxes() {
+        if (queuedTargetBoxes.isEmpty()) {
+            return;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+        MatrixStack matrices = new MatrixStack();
+        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
+        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
+
+        for (QueuedTargetBox targetBox : queuedTargetBoxes) {
+            drawScaledBox(matrices, lines, targetBox.box().offset(-cameraPos.x, -cameraPos.y, -cameraPos.z), targetBox.scale(), 0.0f, 1.0f, 0.0f, 1.0f);
+        }
+
+        vertexConsumers.draw();
+        queuedTargetBoxes.clear();
+
     }
 
     private static void renderInventory(QueuedInventory inventory, Vec3d cameraPos,
@@ -141,6 +161,9 @@ public class InfoRenderer {
     private record QueuedInventory(List<ItemStack> items, World world,
                                    double lerpedX, double lerpedY, double lerpedZ,
                                    int totalSlots, int cols, boolean isLocked) {
+    }
+
+    private record QueuedTargetBox(Box box, float scale) {
     }
 
     private static void renderSlotBackground(int row, int col, int cols,
@@ -241,48 +264,32 @@ public class InfoRenderer {
         drawBox(matrices, lines, viewExtractionBox, 1.0f, 1.0f, 0.1f, 0.8f);
     }
 
-    public static boolean highlightExtractionTargets(Entity entity, double cameraX, double cameraY, double cameraZ,
-                                                     MatrixStack matrices, VertexConsumerProvider vertexConsumers) {
+    public static boolean queueExtractionTargets(Entity entity) {
         World world = entity.getEntityWorld();
-        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
         boolean hasTarget = false;
 
         HopperMinecartEntity hopperMinecart = (HopperMinecartEntity) entity;
-
         Box extractionArea = new Box(
                 entity.getX() - 0.5, entity.getY() + 1, entity.getZ() - 0.5,
                 entity.getX() + 0.5, entity.getY() + 2, entity.getZ() + 0.5
         );
 
-        //方块实体
         BlockPos targetPos = BlockPos.ofFloored(hopperMinecart.getHopperX(), hopperMinecart.getHopperY() + 1.0, hopperMinecart.getHopperZ());
         BlockState state = world.getBlockState(targetPos);
-
         if (world.getBlockEntity(targetPos) != null) {
             VoxelShape shape = state.getOutlineShape(world, targetPos);
             if (!shape.isEmpty()) {
+                queuedTargetBoxes.add(new QueuedTargetBox(shape.getBoundingBox().offset(targetPos), 1.0f));
                 hasTarget = true;
-                Box combinedBox = shape.getBoundingBox();
-                Box viewBox = combinedBox.offset(
-                        targetPos.getX() - cameraX,
-                        targetPos.getY() - cameraY + 1.5,
-                        targetPos.getZ() - cameraZ);
-
-                drawScaledBox(matrices, lines, viewBox, 2f, 0.0f, 1.0f, 0.0f, 1.0f);
             }
         }
 
-        // 实体
         List<Entity> inventories = world.getOtherEntities(entity, extractionArea, e ->
                 e instanceof net.minecraft.entity.vehicle.VehicleInventory && e.isAlive()
         );
-
-        if (!inventories.isEmpty()) {
+        for (Entity inventory : inventories) {
+            queuedTargetBoxes.add(new QueuedTargetBox(inventory.getBoundingBox(), 2.0f));
             hasTarget = true;
-            for (Entity invEntity : inventories) {
-                Box viewBox = invEntity.getBoundingBox().offset(-cameraX, -cameraY + 1.5, -cameraZ);
-                drawScaledBox(matrices, lines, viewBox, 2f, 0.0f, 1.0f, 0.0f, 1.0f);
-            }
         }
 
         return hasTarget;
