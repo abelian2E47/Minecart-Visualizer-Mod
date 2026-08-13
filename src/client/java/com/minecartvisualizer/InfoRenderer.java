@@ -206,10 +206,11 @@ public class InfoRenderer {
 
         matrices.push();
         if (item.getItem() instanceof BlockItem) {
-            matrices.scale(-0.53f * itemSize, 0.53f * itemSize, 0.53f * itemSize);
+            matrices.scale(0.53f * itemSize, 0.53f * itemSize, 0.53f * itemSize);
         } else {
-            matrices.scale(-0.4f * itemSize, 0.4f * itemSize, 0.4f * itemSize);
+            matrices.scale(0.4f * itemSize, 0.4f * itemSize, 0.4f * itemSize);
         }
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180));
 
 
         ItemRenderState renderState = new ItemRenderState();

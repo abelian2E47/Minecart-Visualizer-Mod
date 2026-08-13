@@ -24,7 +24,6 @@ public abstract class HopperMinecartEntityMixin extends StorageMinecartEntity {
 
     @Shadow public abstract boolean isEnabled();
 
-    @Shadow public abstract boolean canOperate();
 
     protected HopperMinecartEntityMixin(EntityType<?> type, World world) {super(type, world);}
 
@@ -44,7 +43,7 @@ public abstract class HopperMinecartEntityMixin extends StorageMinecartEntity {
                     items.add(this.getStack(i));
                 }
             }
-            HopperMinecartDataPayload payload = new HopperMinecartDataPayload(uuid,enable,items,this.canOperate());
+            HopperMinecartDataPayload payload = new HopperMinecartDataPayload(uuid, enable, items);
             serverWorld.getPlayers(player -> player.squaredDistanceTo(this) < 32 * 32)
                     .forEach(player -> {
                         if (ServerPlayNetworking.canSend(player, HopperMinecartDataPayload.ID)) {

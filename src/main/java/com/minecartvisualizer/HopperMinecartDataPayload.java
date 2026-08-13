@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public record HopperMinecartDataPayload(UUID uuid, boolean enable , List<ItemStack> items, boolean extract) implements CustomPayload {
+public record HopperMinecartDataPayload(UUID uuid, boolean enable, List<ItemStack> items) implements CustomPayload {
     public static final Id<HopperMinecartDataPayload> ID = new CustomPayload.Id<>(Minecartvisualizer.HOPPER_MINECART_DATA_PACKET_ID);
 
     @Override
@@ -24,7 +24,6 @@ public record HopperMinecartDataPayload(UUID uuid, boolean enable , List<ItemSta
                 for (int i = 0; i < 5; i++) {
                     ItemStack.OPTIONAL_PACKET_CODEC.encode(buf, payload.items().get(i));
                 }
-                buf.writeBoolean(payload.extract());
             },
             buf -> {
                 UUID uuid = buf.readUuid();
@@ -33,8 +32,7 @@ public record HopperMinecartDataPayload(UUID uuid, boolean enable , List<ItemSta
                 for (int i = 0; i < 5; i++) {
                     items.add(ItemStack.OPTIONAL_PACKET_CODEC.decode(buf));
                 }
-                boolean extract = buf.readBoolean();
-                return new HopperMinecartDataPayload(uuid, enable, items, extract);
+                return new HopperMinecartDataPayload(uuid, enable, items);
             }
     );
 }

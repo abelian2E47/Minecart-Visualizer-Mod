@@ -221,11 +221,6 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
             }
         }
 
-        if (entity instanceof HopperMinecartEntity){
-            if (MinecartClientHandler.getHopperMinecartData(entity.getUuid()).extract()){
-                infoTexts.add(Text.literal("Working").formatted(Formatting.YELLOW));
-            }
-        }
 
         double textYOffset = getTextYOffset(entity, group, config);
 
