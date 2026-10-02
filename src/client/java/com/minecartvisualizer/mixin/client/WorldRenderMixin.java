@@ -58,8 +58,12 @@ public abstract class WorldRenderMixin {
         try {
             MinecraftClient client = MinecraftClient.getInstance();
             RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(client.getFramebuffer().getDepthAttachment(), 1.0);
-            InfoRenderer.renderQueuedTargetBoxes();
-            InfoRenderer.renderQueuedInventories();
+            if (!InfoRenderer.renderQueuedExtractionTargets()){
+                InfoRenderer.renderQueuedWorldBoxes();
+                InfoRenderer.renderQueuedInventories();
+            }
+
+
         } finally {
             modelViewStack.popMatrix();
         }

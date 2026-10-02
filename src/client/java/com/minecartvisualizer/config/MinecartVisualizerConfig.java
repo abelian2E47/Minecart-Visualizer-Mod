@@ -7,6 +7,8 @@ import dev.isxander.yacl3.config.v2.api.serializer.GsonConfigSerializerBuilder;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.util.Identifier;
 
+import java.awt.Color;
+
 public final class MinecartVisualizerConfig {
     public static final ConfigClassHandler<MinecartVisualizerConfig> HANDLER = ConfigClassHandler.createBuilder(MinecartVisualizerConfig.class)
             .id(Identifier.of("minecartvisualizer", "config"))
@@ -24,6 +26,9 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean glowingTrackingMinecart = true;
     @SerialEntry public boolean highlightExtractionTargets = false;
     @SerialEntry public boolean renderHopperRanges = false;
+    @SerialEntry public boolean hopperVisualOnTop = false;
+    @SerialEntry public float hopperRangeBoxScale = 1.0f;
+    @SerialEntry public float extractionTargetBoxScale = 1.0f;
     @SerialEntry public boolean foldInventory = false;
     @SerialEntry public boolean autoSizeColumns = false;
     @SerialEntry public boolean[] hopperSlotFilter = {true, true, true, true, true};
@@ -58,8 +63,36 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean enableTNTWobbleDisplay = true;
     @SerialEntry public boolean trackTNTMinecart = true;
 
+    // --- 颜色 ---
+    public static final Color DEFAULT_PICKUP_RANGE_COLOR = new Color(0xFFFF1A);
+    public static final Color DEFAULT_EXTRACTION_RANGE_COLOR = new Color(0xFF991A);
+    public static final Color DEFAULT_EXTRACTION_TARGET_COLOR = new Color(0x2BFF4D);
+    public static final Color DEFAULT_TRACKER_POINT_ACTIVE_COLOR = new Color(0x2BFF4D);
+    public static final Color DEFAULT_TRACKER_POINT_INACTIVE_COLOR = new Color(0x8C8C8C);
+    public static final Color DEFAULT_TRACKER_TRAIL_COLOR = new Color(0x2BFF4D);
+    public static final Color DEFAULT_SLOT_BACKGROUND_COLOR = new Color(0x878787);
+    public static final Color DEFAULT_SLOT_BORDER_COLOR = new Color(0xE6E6E6);
+    public static final Color DEFAULT_SLOT_BACKGROUND_LOCKED_COLOR = new Color(0x663B3B);
+    public static final Color DEFAULT_SLOT_BORDER_LOCKED_COLOR = new Color(0x990000);
+    public static final Color DEFAULT_ITEM_COUNT_TEXT_COLOR = new Color(0xFFFFFF);
+    public static final Color DEFAULT_INFO_TEXT_COLOR = new Color(0xFFFFFF);
+
+    @SerialEntry public Color pickupRangeColor = new Color(0xFFFF1A);
+    @SerialEntry public Color extractionRangeColor = new Color(0xFF991A);
+    @SerialEntry public Color extractionTargetColor = new Color(0x2BFF4D);
+    @SerialEntry public Color trackerPointActiveColor = new Color(0x2BFF4D);
+    @SerialEntry public Color trackerPointInactiveColor = new Color(0x8C8C8C);
+    @SerialEntry public Color trackerTrailColor = new Color(0x2BFF4D);
+    @SerialEntry public Color slotBackgroundColor = new Color(0x878787);
+    @SerialEntry public Color slotBorderColor = new Color(0xE6E6E6);
+    @SerialEntry public Color slotBackgroundLockedColor = new Color(0x663B3B);
+    @SerialEntry public Color slotBorderLockedColor = new Color(0x990000);
+    @SerialEntry public Color itemCountTextColor = new Color(0xFFFFFF);
+    @SerialEntry public Color infoTextColor = new Color(0xFFFFFF);
+
     // --- 追踪与调试 ---
     @SerialEntry public boolean trackingByDye = true;
+    @SerialEntry public boolean trackerPointUseDyeColor = true;
     @SerialEntry public boolean trackMinecartTrail = false;
     @SerialEntry public boolean outputWhenDestroyed = true;
     @SerialEntry public boolean outputWhenSlotChange = true;

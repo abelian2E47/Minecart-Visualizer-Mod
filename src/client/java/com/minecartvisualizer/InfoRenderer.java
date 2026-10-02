@@ -1,9 +1,12 @@
 package com.minecartvisualizer;
 
+import com.minecartvisualizer.config.Colors;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.HopperMinecartTracker;
 import com.minecartvisualizer.tracker.TrackerColor;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.InventoryProvider;
+import net.minecraft.block.entity.Hopper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.item.ItemModelManager;
@@ -14,9 +17,11 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.vehicle.HopperMinecartEntity;
+import net.minecraft.inventory.Inventory;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemDisplayContext;
 import net.minecraft.item.ItemStack;
+import net.minecraft.predicate.entity.EntityPredicates;
 import net.minecraft.text.MutableText;
 import net.minecraft.util.math.*;
 import net.minecraft.util.shape.VoxelShape;
@@ -25,14 +30,13 @@ import net.minecraft.world.World;
 import net.minecraft.client.render.RenderLayers;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.spongepowered.asm.mixin.Unique;
 
 import java.util.*;
 
 
 public class InfoRenderer {
 
-    public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer) {
+    public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer, int textColor) {
         var config = MinecartVisualizerConfig.getInstance();
         TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
         float baseHeight = entity.getHeight() + 0.5f;
@@ -48,26 +52,29 @@ public class InfoRenderer {
         matrices.scale(0.03f, -0.03f, 0.03f);
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
         float startY = -(infoTexts.size() * 10);
-        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, true);
-        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, false);
+        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, true, textColor);
+        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, false, textColor);
         matrices.pop();
     }
 
-    private static void renderTextLayer(List<MutableText> texts, TextRenderer renderer, Matrix4f matrix, VertexConsumerProvider vc, float y, boolean isBackground) {
+    private static void renderTextLayer(List<MutableText> texts, TextRenderer renderer, Matrix4f matrix, VertexConsumerProvider vc, float y, boolean isBackground, int textColor) {
         float currentY = y;
         for (MutableText text : texts) {
             float x = -renderer.getWidth(text) / 2f;
             if (isBackground) {
-                renderer.draw(text, x, currentY, -2130706433, false, matrix, vc, TextRenderer.TextLayerType.SEE_THROUGH, 0x4CC8C8C8, 0xF000F0);
+                // 背景层使用同样的颜色，但透明度较低
+                int backgroundColor = (textColor & 0xFFFFFF) | 0x4C000000;
+                renderer.draw(text, x, currentY, backgroundColor, false, matrix, vc, TextRenderer.TextLayerType.SEE_THROUGH, 0x4CC8C8C8, 0xF000F0);
             } else {
-                renderer.draw(text, x, currentY, 0xFFFFFFFF, false, matrix, vc, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
+                renderer.draw(text, x, currentY, textColor, false, matrix, vc, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
             }
             currentY += 10;
         }
     }
 
     private static final List<QueuedInventory> queuedInventories = new ArrayList<>();
-    private static final List<QueuedTargetBox> queuedTargetBoxes = new ArrayList<>();
+    private static final List<QueuedExtractionTarget> queuedExtractionTargets = new ArrayList<>();
+    private static final List<QueuedWorldBox> queuedWorldBoxes = new ArrayList<>();
 
     public static void queueInventory(List<ItemStack> items, World world,
                                       double lerpedX, double lerpedY, double lerpedZ,
@@ -79,11 +86,12 @@ public class InfoRenderer {
 
     public static void beginTopRenderFrame() {
         queuedInventories.clear();
-        queuedTargetBoxes.clear();
+        queuedExtractionTargets.clear();
+        queuedWorldBoxes.clear();
     }
 
     public static boolean hasQueuedTopRenderContent() {
-        return !queuedInventories.isEmpty() || !queuedTargetBoxes.isEmpty();
+        return !queuedInventories.isEmpty() || !queuedExtractionTargets.isEmpty() || !queuedWorldBoxes.isEmpty();
     }
 
     public static void renderQueuedInventories() {
@@ -109,8 +117,33 @@ public class InfoRenderer {
         }
 
     }
-    public static void renderQueuedTargetBoxes() {
-        if (queuedTargetBoxes.isEmpty()) {
+    public static boolean renderQueuedExtractionTargets() {
+        if (queuedExtractionTargets.isEmpty()) {
+            return false;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+        MatrixStack matrices = new MatrixStack();
+        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
+        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
+
+        float[] color = Colors.rgbFloats(MinecartVisualizerConfig.getInstance().extractionTargetColor, MinecartVisualizerConfig.DEFAULT_EXTRACTION_TARGET_COLOR.getRGB());
+        int argb = ColorHelper.getArgb(255, (int) (color[0] * 255), (int) (color[1] * 255), (int) (color[2] * 255));
+        for (QueuedExtractionTarget target : queuedExtractionTargets) {
+            drawScaledOutline(matrices, lines, target.shape(),
+                    target.origin().x - cameraPos.x, target.origin().y - cameraPos.y, target.origin().z - cameraPos.z,
+                    target.scale(), argb);
+        }
+
+        vertexConsumers.draw();
+        queuedExtractionTargets.clear();
+
+        return true;
+    }
+
+    public static void renderQueuedWorldBoxes() {
+        if (queuedWorldBoxes.isEmpty()) {
             return;
         }
 
@@ -120,13 +153,14 @@ public class InfoRenderer {
         VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
         VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
 
-        for (QueuedTargetBox targetBox : queuedTargetBoxes) {
-            drawScaledBox(matrices, lines, targetBox.box().offset(-cameraPos.x, -cameraPos.y, -cameraPos.z), targetBox.scale(), 0.0f, 1.0f, 0.0f, 1.0f);
+        for (QueuedWorldBox queued : queuedWorldBoxes) {
+            Box viewBox = queued.box().offset(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+            drawScaledBox(matrices, lines, viewBox, queued.scale(),
+                    queued.color()[0], queued.color()[1], queued.color()[2], 1.0f);
         }
 
         vertexConsumers.draw();
-        queuedTargetBoxes.clear();
-
+        queuedWorldBoxes.clear();
     }
 
     private static void renderInventory(QueuedInventory inventory, Vec3d cameraPos,
@@ -163,12 +197,23 @@ public class InfoRenderer {
                                    int totalSlots, int cols, boolean isLocked) {
     }
 
-    private record QueuedTargetBox(Box box, float scale) {
+    /**
+     * 待置顶绘制的吸取对象轮廓。
+     *
+     * @param shape  轮廓形状，位于 {@code origin} 处的局部坐标系中
+     * @param origin 形状局部坐标系原点的世界坐标
+     * @param scale  以轮廓中心为基准的缩放
+     */
+    private record QueuedExtractionTarget(VoxelShape shape, Vec3d origin, float scale) {
+    }
+
+    private record QueuedWorldBox(Box box, float scale, float[] color) {
     }
 
     private static void renderSlotBackground(int row, int col, int cols,
                                              MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                              boolean isLocked, float slotSize) {
+        var config = MinecartVisualizerConfig.getInstance();
         matrices.push();
         double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
         double yOffset = row * 0.5 * slotSize + 1;
@@ -177,18 +222,21 @@ public class InfoRenderer {
         VertexConsumer buffer = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_BACKGROUND);
         Matrix4f matrix = matrices.peek().getPositionMatrix();
 
-        boolean changeColor = isLocked && MinecartVisualizerConfig.getInstance().enableHopperMinecartEnableDisplay;
+        boolean changeColor = isLocked && config.enableHopperMinecartEnableDisplay;
 
-        float r1 = changeColor ? 0.4f : 0.53f;
-        float g1 = changeColor ? 0.23f : 0.53f;
-        float b1 = changeColor ? 0.23f : 0.53f;
+        float[] background = Colors.rgbFloats(
+                changeColor ? config.slotBackgroundLockedColor : config.slotBackgroundColor,
+                changeColor ? MinecartVisualizerConfig.DEFAULT_SLOT_BACKGROUND_LOCKED_COLOR.getRGB()
+                        : MinecartVisualizerConfig.DEFAULT_SLOT_BACKGROUND_COLOR.getRGB());
+        float[] border = Colors.rgbFloats(
+                changeColor ? config.slotBorderLockedColor : config.slotBorderColor,
+                changeColor ? MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_LOCKED_COLOR.getRGB()
+                        : MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_COLOR.getRGB());
 
-        float r2 = changeColor ? 0.6f : 0.9f;
-        float g2 = changeColor ? 0.0f : 0.9f;
-        float b2 = changeColor ? 0.0f : 0.9f;
-
-        drawRect(matrix, buffer, 0.19f * slotSize, -0.06f * slotSize, r1, g1, b1, 0.25f);//背景
-        drawRect(matrix, buffer, 0.22f * slotSize, -0.08f * slotSize, r2, g2, b2, 0.8f);//边框
+        drawRect(matrix, buffer, 0.19f * slotSize, -0.06f * slotSize,
+                background[0], background[1], background[2], 0.25f);//背景
+        drawRect(matrix, buffer, 0.22f * slotSize, -0.08f * slotSize,
+                border[0], border[1], border[2], 0.8f);//边框
         matrices.pop();
     }
 
@@ -234,7 +282,8 @@ public class InfoRenderer {
             matrices.translate(0.12 * slotSize, -0.1 * slotSize, 0.1);
             matrices.scale(0.02f * itemSize, -0.02f * itemSize, 0.02f * itemSize);
 
-            textRenderer.draw(countString, 0.0f, 0.0f, 0xFFFFFFFF, false,
+            textRenderer.draw(countString, 0.0f, 0.0f,
+                    Colors.rgb(MinecartVisualizerConfig.getInstance().itemCountTextColor, MinecartVisualizerConfig.DEFAULT_ITEM_COUNT_TEXT_COLOR.getRGB()) | 0xFF000000, false,
                     matrices.peek().getPositionMatrix(), vertexConsumers,
                     TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
             matrices.pop();
@@ -245,59 +294,132 @@ public class InfoRenderer {
 
 
 
-    public static void renderHopperRanges(Entity entity, double cameraX, double cameraY, double cameraZ,
-                                          MatrixStack matrices, VertexConsumerProvider vertexConsumers) {
-        VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_LINES);
+    /**
+     * 构建漏斗矿车的两个吸取范围框（世界坐标），元素 0 为掉落物吸取范围，元素 1 为上方输入区域。
+     *
+     * <p>两者都直接对应原版代码里实际用于搜索物品实体的区域：</p>
+     * <ul>
+     *     <li>{@code HopperMinecartEntity#canOperate()} 用
+     *     {@code getBoundingBox().expand(0.25, 0.0, 0.25)} 搜索周围的掉落物；</li>
+     *     <li>{@code HopperBlockEntity#getInputItemEntities()} 用
+     *     {@code Hopper.INPUT_AREA_SHAPE.offset(hopperX - 0.5, hopperY - 0.5, hopperZ - 0.5)}，
+     *     即 1×1、从 +11/16 格到 +2 格的柱体，搜索上方掉落的物品实体。</li>
+     * </ul>
+     */
+    public static Box[] buildHopperRangeBoxes(Entity entity) {
+        Box pickupBox = entity.getBoundingBox().expand(0.25, 0.0, 0.25);
 
-        Box pickupBox = entity.getBoundingBox().expand(1, 0.4, 1);
-        Box viewPickupBox = pickupBox.offset(-cameraX, -cameraY, -cameraZ);
-        drawBox(matrices, lines, viewPickupBox, 1.0f, 1.0f, 0.1f, 0.8f);
+        // 漏斗矿车的 getHopperX/Y/Z 分别是 getX()、getY() + 0.5、getZ()
+        Box inputAreaBox = Hopper.INPUT_AREA_SHAPE.offset(
+                entity.getX() - 0.5, entity.getY(), entity.getZ() - 0.5);
 
-        double minX = entity.getX() - 1;
-        double minZ = entity.getZ() - 1;
-        double minY = entity.getY() + 1;
-        double maxX = entity.getX() + 1;
-        double maxZ = entity.getZ() + 1;
-        double maxY = entity.getY() + 4;
-
-        Box extractionBox = new Box(minX, minY, minZ, maxX, maxY, maxZ);
-        Box viewExtractionBox = extractionBox.offset(-cameraX, -cameraY, -cameraZ);
-        drawBox(matrices, lines, viewExtractionBox, 1.0f, 1.0f, 0.1f, 0.8f);
+        return new Box[]{pickupBox, inputAreaBox};
     }
 
-    public static boolean queueExtractionTargets(Entity entity) {
+    /** 直接在当前渲染流程中绘制吸取范围框（不置顶）。 */
+    public static void renderHopperRanges(Entity entity, double cameraX, double cameraY, double cameraZ,
+                                          MatrixStack matrices, VertexConsumerProvider vertexConsumers,
+                                          float[] pickupColor, float[] extractionColor, float scale) {
+        VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_LINES);
+        Box[] boxes = buildHopperRangeBoxes(entity);
+
+        drawScaledBox(matrices, lines, boxes[0].offset(-cameraX, -cameraY, -cameraZ), scale,
+                pickupColor[0], pickupColor[1], pickupColor[2], 0.8f);
+        drawScaledBox(matrices, lines, boxes[1].offset(-cameraX, -cameraY, -cameraZ), scale,
+                extractionColor[0], extractionColor[1], extractionColor[2], 0.8f);
+    }
+
+    /** 把吸取范围框加入置顶渲染队列（在实体渲染阶段调用）。 */
+    public static void queueWorldBox(Box box, float scale, float[] color) {
+        queuedWorldBoxes.add(new QueuedWorldBox(box, scale, color));
+    }
+
+    /**
+     * 按原版 {@code HopperBlockEntity#extract(World, Hopper)} 的逻辑找出上方真正会被吸取的对象：
+     * 先找漏斗正上方的容器方块，再找该点上的实体容器。
+     *
+     * <p>吸取目标方块的位置取自 {@code BlockPos.ofFloored(hopperX, hopperY + 1.0, hopperZ)}，
+     * 实体容器的搜索范围取自 {@code HopperBlockEntity#getEntityInventoryAt} 的
+     * {@code Box(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5)}。</p>
+     *
+     * <p>方块以自身的轮廓形状入队（与原版方块描边一致），因此形状不是完整方块的容器
+     * （漏斗、堆肥桶、饰纹陶罐等）也能画出完整轮廓线。</p>
+     */
+    public static boolean queueExtractionTargets(Entity entity, float scale) {
         World world = entity.getEntityWorld();
         boolean hasTarget = false;
 
         HopperMinecartEntity hopperMinecart = (HopperMinecartEntity) entity;
-        Box extractionArea = new Box(
-                entity.getX() - 0.5, entity.getY() + 1, entity.getZ() - 0.5,
-                entity.getX() + 0.5, entity.getY() + 2, entity.getZ() + 0.5
-        );
 
-        BlockPos targetPos = BlockPos.ofFloored(hopperMinecart.getHopperX(), hopperMinecart.getHopperY() + 1.0, hopperMinecart.getHopperZ());
+        BlockPos targetPos = BlockPos.ofFloored(
+                hopperMinecart.getHopperX(), hopperMinecart.getHopperY() + 1.0, hopperMinecart.getHopperZ());
         BlockState state = world.getBlockState(targetPos);
-        if (world.getBlockEntity(targetPos) != null) {
+        if (hasInventory(world, targetPos, state)) {
+            // 与原版方块描边相同：优先使用轮廓形状，没有轮廓时退回碰撞形状
             VoxelShape shape = state.getOutlineShape(world, targetPos);
+            if (shape.isEmpty()) {
+                shape = state.getCollisionShape(world, targetPos);
+            }
+
             if (!shape.isEmpty()) {
-                queuedTargetBoxes.add(new QueuedTargetBox(shape.getBoundingBox().offset(targetPos), 1.0f));
+                queuedExtractionTargets.add(new QueuedExtractionTarget(
+                        shape, new Vec3d(targetPos.getX(), targetPos.getY(), targetPos.getZ()), scale));
                 hasTarget = true;
             }
         }
 
-        List<Entity> inventories = world.getOtherEntities(entity, extractionArea, e ->
-                e instanceof net.minecraft.entity.vehicle.VehicleInventory && e.isAlive()
+        Box extractionArea = new Box(
+                entity.getX() - 0.5, entity.getY() + 1.0, entity.getZ() - 0.5,
+                entity.getX() + 0.5, entity.getY() + 2.0, entity.getZ() + 0.5
         );
-        for (Entity inventory : inventories) {
-            queuedTargetBoxes.add(new QueuedTargetBox(inventory.getBoundingBox(), 2.0f));
+
+        for (Entity inventory : world.getOtherEntities(entity, extractionArea, EntityPredicates.VALID_INVENTORIES)) {
+            // 实体的轮廓即其碰撞箱，形状坐标已是世界坐标，所以原点取零向量
+            queuedExtractionTargets.add(new QueuedExtractionTarget(
+                    VoxelShapes.cuboid(inventory.getBoundingBox()), Vec3d.ZERO, scale));
             hasTarget = true;
         }
 
         return hasTarget;
     }
 
+    /** 原版 {@code HopperBlockEntity#getBlockInventoryAt}：方块自己提供容器，或方块实体实现了 Inventory。 */
+    private static boolean hasInventory(World world, BlockPos pos, BlockState state) {
+        if (state.getBlock() instanceof InventoryProvider) {
+            return true;
+        }
 
-    @Unique
+        return state.hasBlockEntity() && world.getBlockEntity(pos) instanceof Inventory;
+    }
+
+
+    /**
+     * 绘制形状的完整轮廓线（原版 {@link VertexRendering#drawOutline} 会遍历形状的每一条边），
+     * 并以轮廓中心为基准缩放。
+     */
+    private static void drawScaledOutline(MatrixStack matrices, VertexConsumer lines, VoxelShape shape,
+                                          double offsetX, double offsetY, double offsetZ,
+                                          float scale, int argb) {
+        if (shape.isEmpty()) {
+            return;
+        }
+
+        Box bounds = shape.getBoundingBox();
+        double centerX = offsetX + (bounds.minX + bounds.maxX) / 2.0;
+        double centerY = offsetY + (bounds.minY + bounds.maxY) / 2.0;
+        double centerZ = offsetZ + (bounds.minZ + bounds.maxZ) / 2.0;
+
+        matrices.push();
+        matrices.translate(centerX, centerY, centerZ);
+        matrices.scale(scale, scale, scale);
+        matrices.translate(-centerX, -centerY, -centerZ);
+
+        VertexRendering.drawOutline(matrices, lines, shape, offsetX, offsetY, offsetZ, argb, 2.0f);
+
+        matrices.pop();
+    }
+
+    /** 以框的中心为基准缩放后绘制。 */
     private static void drawScaledBox(MatrixStack matrices, VertexConsumer lines, Box viewBox, float scale, float r, float g, float b, float a) {
         matrices.push();
 
@@ -318,17 +440,35 @@ public class InfoRenderer {
         matrices.pop();
     }
 
+    /**
+     * 渲染轨迹：默认沿用追踪器的染料颜色；
+     * 当配置为不使用染料颜色（或未指定颜色）时，使用配置中的固定颜色。
+     */
     public static void renderTrail(HopperMinecartTracker tracker,
                                    MatrixStack matrices, VertexConsumer lineConsumer) {
-        Collection<Vec3d> points = tracker.getTrailPoints();
+        var config = MinecartVisualizerConfig.getInstance();
+
+        float r, g, b;
+        if (config.trackerPointUseDyeColor) {
+            int hex = tracker.getTrackerColor().getHex();
+            r = ((hex >> 16) & 0xFF) / 255f;
+            g = ((hex >> 8) & 0xFF) / 255f;
+            b = (hex & 0xFF) / 255f;
+        } else {
+            float[] rgb = Colors.rgbFloats(config.trackerTrailColor, MinecartVisualizerConfig.DEFAULT_TRACKER_TRAIL_COLOR.getRGB());
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+        }
+
+        renderTrail(tracker.getTrailPoints(), matrices, lineConsumer, r, g, b);
+    }
+
+    /** 使用指定的固定颜色渲染轨迹。 */
+    public static void renderTrail(Collection<Vec3d> points,
+                                   MatrixStack matrices, VertexConsumer lineConsumer,
+                                   float r, float g, float b) {
         if (points.size() < 2) return;
 
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
-
-        int hex = tracker.getTrackerColor().getHex();
-        float r = ((hex >> 16) & 0xFF) / 255f;
-        float g = ((hex >> 8) & 0xFF) / 255f;
-        float b = (hex & 0xFF) / 255f;
 
         Vec3d yOffset = new Vec3d(0, 0.5, 0);
 
@@ -448,17 +588,28 @@ public class InfoRenderer {
 
     public static void drawTrackerPointBox(MatrixStack matrices, VertexConsumer lines, TrackerColor color,
                                            BlockPos targetPos, boolean active) {
-        int hex = color.getHex();
-        float r = ((hex >> 16) & 0xFF) / 255.0f;
-        float g = ((hex >> 8) & 0xFF) / 255.0f;
-        float b = (hex & 0xFF) / 255.0f;
+        var config = MinecartVisualizerConfig.getInstance();
 
-        float a;
-        if (active) {
-            a = 1.0f;
+        float r, g, b, a;
+        if (config.trackerPointUseDyeColor) {
+            int hex = color.getHex();
+            r = ((hex >> 16) & 0xFF) / 255.0f;
+            g = ((hex >> 8) & 0xFF) / 255.0f;
+            b = (hex & 0xFF) / 255.0f;
+            a = active ? 1.0f : 0.6f;
+            if (!active) {
+                r *= 0.7f; g *= 0.7f; b *= 0.7f;
+            }
         } else {
-            a = 0.6f;
-            r *= 0.7f; g *= 0.7f; b *= 0.7f;
+            float[] rgb = Colors.rgbFloats(
+                    active ? config.trackerPointActiveColor : config.trackerPointInactiveColor,
+                    active ? MinecartVisualizerConfig.DEFAULT_TRACKER_POINT_ACTIVE_COLOR.getRGB()
+                            : MinecartVisualizerConfig.DEFAULT_TRACKER_POINT_INACTIVE_COLOR.getRGB());
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+            a = active ? 1.0f : 0.6f;
+            if (!active) {
+                r *= 0.7f; g *= 0.7f; b *= 0.7f;
+            }
         }
 
         double minX = targetPos.getX();

@@ -1,5 +1,6 @@
 package com.minecartvisualizer.mixin.client;
 import com.minecartvisualizer.*;
+import com.minecartvisualizer.config.Colors;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.HopperMinecartTracker;
 import com.minecartvisualizer.tracker.TrackerColor;
@@ -21,6 +22,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.Box;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -140,10 +142,25 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
             }
         }
 
-        if (!isLocked && config.highlightExtractionTargets) {
-            boolean hasTargets = InfoRenderer.queueExtractionTargets(entity);
-            if (!hasTargets && config.renderHopperRanges) {
-                InfoRenderer.renderHopperRanges(entity, cameraX, cameraY, cameraZ, matrices, vertexConsumers);
+        if (!isLocked && (config.highlightExtractionTargets || config.renderHopperRanges)) {
+            if (config.renderHopperRanges) {
+                Box[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity);
+                float rangeScale = config.hopperRangeBoxScale;
+                float[] pickupColor = Colors.rgbFloats(config.pickupRangeColor,
+                        MinecartVisualizerConfig.DEFAULT_PICKUP_RANGE_COLOR.getRGB());
+                float[] extractionColor = Colors.rgbFloats(config.extractionRangeColor,
+                        MinecartVisualizerConfig.DEFAULT_EXTRACTION_RANGE_COLOR.getRGB());
+
+                if (config.hopperVisualOnTop) {
+                    InfoRenderer.queueWorldBox(rangeBoxes[0], rangeScale, pickupColor);
+                    InfoRenderer.queueWorldBox(rangeBoxes[1], rangeScale, extractionColor);
+                } else {
+                    InfoRenderer.renderHopperRanges(entity, cameraX, cameraY, cameraZ, matrices, vertexConsumers,
+                            pickupColor, extractionColor, rangeScale);
+                }
+            }
+            if (config.highlightExtractionTargets) {
+                InfoRenderer.queueExtractionTargets(entity, config.extractionTargetBoxScale);
             }
         }
     }
@@ -226,7 +243,8 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         matrices.push();
         matrices.translate(0, textYOffset, 0);
-        InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers);
+        InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers,
+                Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000);
         matrices.pop();
     }
 

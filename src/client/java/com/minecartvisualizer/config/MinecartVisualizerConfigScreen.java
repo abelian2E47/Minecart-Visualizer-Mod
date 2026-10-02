@@ -1,6 +1,7 @@
 package com.minecartvisualizer.config;
 
 import dev.isxander.yacl3.api.*;
+import dev.isxander.yacl3.api.controller.ColorControllerBuilder;
 import dev.isxander.yacl3.api.controller.CyclingListControllerBuilder;
 import dev.isxander.yacl3.api.controller.FloatSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
@@ -9,7 +10,10 @@ import dev.isxander.yacl3.api.controller.TickBoxControllerBuilder;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
 
+import java.awt.Color;
 import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 public class MinecartVisualizerConfigScreen {
 
@@ -189,9 +193,31 @@ public class MinecartVisualizerConfigScreen {
                                         .controller(TickBoxControllerBuilder::create)
                                         .build())
                                 .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.hopper_visual_on_top"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.hopper_visual_on_top.desc")))
+                                        .binding(false, () -> config.hopperVisualOnTop, v -> config.hopperVisualOnTop = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
                                         .name(Text.translatable("yacl.option.highlight_targets"))
                                         .binding(true, () -> config.highlightExtractionTargets, v -> config.highlightExtractionTargets = v)
                                         .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Float>createBuilder()
+                                        .name(Text.translatable("yacl.option.hopper_range_scale"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.hopper_range_scale.desc")))
+                                        .binding(1.0f, () -> config.hopperRangeBoxScale, v -> config.hopperRangeBoxScale = v)
+                                        .controller(opt -> FloatSliderControllerBuilder.create(opt)
+                                                .range(0.1f, 3.0f)
+                                                .step(0.05f))
+                                        .build())
+                                .option(Option.<Float>createBuilder()
+                                        .name(Text.translatable("yacl.option.extraction_target_scale"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.extraction_target_scale.desc")))
+                                        .binding(1.0f, () -> config.extractionTargetBoxScale, v -> config.extractionTargetBoxScale = v)
+                                        .controller(opt -> FloatSliderControllerBuilder.create(opt)
+                                                .range(0.1f, 4.0f)
+                                                .step(0.05f))
                                         .build())
                                 .option(Option.<Boolean>createBuilder()
                                         .name(Text.translatable("yacl.option.hopper_locked"))
@@ -237,10 +263,70 @@ public class MinecartVisualizerConfigScreen {
                                 .build())
 
                         .group(OptionGroup.createBuilder()
+                                .name(Text.translatable("yacl.group.colors"))
+                                .description(OptionDescription.of(Text.translatable("yacl.group.colors.desc")))
+                                .collapsed(true)
+                                .option(createColorOption(
+                                        "yacl.option.color_pickup_range",
+                                        MinecartVisualizerConfig.DEFAULT_PICKUP_RANGE_COLOR,
+                                        c -> c.pickupRangeColor, (c, v) -> c.pickupRangeColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_extraction_range",
+                                        MinecartVisualizerConfig.DEFAULT_EXTRACTION_RANGE_COLOR,
+                                        c -> c.extractionRangeColor, (c, v) -> c.extractionRangeColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_extraction_target",
+                                        MinecartVisualizerConfig.DEFAULT_EXTRACTION_TARGET_COLOR,
+                                        c -> c.extractionTargetColor, (c, v) -> c.extractionTargetColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_info_text",
+                                        MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR,
+                                        c -> c.infoTextColor, (c, v) -> c.infoTextColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_item_count_text",
+                                        MinecartVisualizerConfig.DEFAULT_ITEM_COUNT_TEXT_COLOR,
+                                        c -> c.itemCountTextColor, (c, v) -> c.itemCountTextColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_slot_background",
+                                        MinecartVisualizerConfig.DEFAULT_SLOT_BACKGROUND_COLOR,
+                                        c -> c.slotBackgroundColor, (c, v) -> c.slotBackgroundColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_slot_border",
+                                        MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_COLOR,
+                                        c -> c.slotBorderColor, (c, v) -> c.slotBorderColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_slot_background_locked",
+                                        MinecartVisualizerConfig.DEFAULT_SLOT_BACKGROUND_LOCKED_COLOR,
+                                        c -> c.slotBackgroundLockedColor, (c, v) -> c.slotBackgroundLockedColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_slot_border_locked",
+                                        MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_LOCKED_COLOR,
+                                        c -> c.slotBorderLockedColor, (c, v) -> c.slotBorderLockedColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_tracker_point_active",
+                                        MinecartVisualizerConfig.DEFAULT_TRACKER_POINT_ACTIVE_COLOR,
+                                        c -> c.trackerPointActiveColor, (c, v) -> c.trackerPointActiveColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_tracker_point_inactive",
+                                        MinecartVisualizerConfig.DEFAULT_TRACKER_POINT_INACTIVE_COLOR,
+                                        c -> c.trackerPointInactiveColor, (c, v) -> c.trackerPointInactiveColor = v))
+                                .option(createColorOption(
+                                        "yacl.option.color_tracker_trail",
+                                        MinecartVisualizerConfig.DEFAULT_TRACKER_TRAIL_COLOR,
+                                        c -> c.trackerTrailColor, (c, v) -> c.trackerTrailColor = v))
+                                .build())
+
+                        .group(OptionGroup.createBuilder()
                                 .name(Text.translatable("yacl.group.track"))
                                 .option(Option.<Boolean>createBuilder()
                                         .name(Text.translatable("yacl.option.track_trail"))
                                         .binding(true, () -> config.trackMinecartTrail, v -> config.trackMinecartTrail = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.tracker_use_dye_color"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.tracker_use_dye_color.desc")))
+                                        .binding(true, () -> config.trackerPointUseDyeColor, v -> config.trackerPointUseDyeColor = v)
                                         .controller(TickBoxControllerBuilder::create)
                                         .build())
                                 .option(Option.<Integer>createBuilder()
@@ -319,6 +405,29 @@ public class MinecartVisualizerConfigScreen {
                 .name(Text.translatable("yacl.minecartvisualizer.text.slot" ).append(" " + (index + 1)))
                 .binding(true, () -> config.hopperSlotFilter[index], v -> config.hopperSlotFilter[index] = v)
                 .controller(TickBoxControllerBuilder::create)
+                .build();
+    }
+
+    /**
+     * 创建一个带取色器的颜色选项。
+     *
+     * @param nameKey 语言键
+     * @param fallback 默认颜色，同时作为旧配置缺少该字段时的回退值
+     * @param getter  读取配置里的颜色
+     * @param setter  写回配置里的颜色
+     */
+    private static Option<Color> createColorOption(String nameKey, Color fallback,
+                                                   Function<MinecartVisualizerConfig, Color> getter,
+                                                   BiConsumer<MinecartVisualizerConfig, Color> setter) {
+        MinecartVisualizerConfig config = MinecartVisualizerConfig.getInstance();
+        return Option.<Color>createBuilder()
+                .name(Text.translatable(nameKey))
+                .description(OptionDescription.of(Text.translatable(nameKey + ".desc")))
+                .binding(fallback, () -> {
+                    Color current = getter.apply(config);
+                    return current != null ? current : fallback;
+                }, v -> setter.accept(config, v))
+                .controller(opt -> ColorControllerBuilder.create(opt).allowAlpha(false))
                 .build();
     }
 
