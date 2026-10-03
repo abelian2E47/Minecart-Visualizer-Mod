@@ -17,6 +17,7 @@ public abstract class HopperMinecartEntityMixin extends StorageMinecartEntity {
 
     @Inject(at = @At("TAIL"), method = "tick")
     public void sendHopperMinecartData(CallbackInfo ci) {
+        //统一走 MinecartDataSender：物品栏 + 服务端算出的吸取目标一起下发
         MinecartDataSender.sendHopper((HopperMinecartEntity) (Object) this);
     }
 }

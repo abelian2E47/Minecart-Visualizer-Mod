@@ -15,11 +15,11 @@ public class TrackerCounter {
     private final Map<Text, Integer> decrease = new HashMap<>();
     private final Map<Text, Integer> destroyedDrops = new HashMap<>();
     private int runTime;
+    //最近一次计入统计的服务端时间（tick），-1 表示还没开始计时
+    private long lastServerTime = -1L;
     private double avgLifetime;
     private int totalDestroyedTrackers;
     private boolean enable;
-    //上一次统计到的服务端时间，用于按服务端 tick 累计运行时长
-    private long lastServerTime = -1L;
 
     public TrackerCounter(TrackerColor color){
         this.color = color;
@@ -75,7 +75,7 @@ public class TrackerCounter {
         report.append(Text.literal("Avg Lifetime: ").formatted(Formatting.GRAY)
                 .append(Text.literal(Math.round(avgLifetime) + " gt\n").formatted(Formatting.GOLD)));
 
-        report.append(Text.literal("Minecart Count: ").formatted(Formatting.GRAY)
+        report.append(Text.literal("Tracker Count: ").formatted(Formatting.GRAY)
                 .append(Text.literal(TrackersManager.getTrackerCount(color) + "").formatted(Formatting.LIGHT_PURPLE)));
 
         player.sendMessage(report, false);

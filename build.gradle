@@ -1,32 +1,29 @@
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+	id 'fabric-loom' version "${loom_version}"
 	id 'maven-publish'
 }
 
 version = project.mod_version
 group = project.maven_group
 
+base {
+	archivesName = project.archives_base_name
+}
+
 repositories {
 	maven {
-		name = "SakuraRyoko"
-		url = "https://maven.sakuraryoko.com/"
-		content {
-			includeModule("com.terraformersmc", "modmenu")
-		}
+		name "xanderRepoReleases"
+		url "https://maven.isxander.dev/releases"
 	}
-	maven { url = "https://maven.isxander.dev/releases" }
 	maven {
 		name = "Terraformers"
 		url = "https://maven.terraformersmc.com/"
-		content {
-			includeModule("com.terraformersmc", "modmenu")
-		}
 	}
+
 }
 
 loom {
 	splitEnvironmentSourceSets()
-
 	mods {
 		"minecartvisualizer" {
 			sourceSet sourceSets.main
@@ -36,15 +33,20 @@ loom {
 
 }
 
+fabricApi {
+	configureDataGeneration {
+		client = true
+	}
+}
+
 dependencies {
-	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-	modImplementation "dev.isxander:yet-another-config-lib:${project.yacl_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	modImplementation ("dev.isxander:yet-another-config-lib:${project.yacl_version}"){
+		exclude(group: "net.fabricmc.fabric-api")
+	}
 	modImplementation "com.terraformersmc:modmenu:${project.modmenu_version}"
 	
 }
@@ -72,10 +74,10 @@ java {
 }
 
 jar {
-	inputs.property "projectName", project.name
+	inputs.property "archivesName", project.base.archivesName
 
 	from("LICENSE") {
-		rename { "${it}_${project.name}"}
+		rename { "${it}_${inputs.properties.archivesName}"}
 	}
 }
 
@@ -83,35 +85,11 @@ jar {
 publishing {
 	publications {
 		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
 			from components.java
 		}
 	}
 
-	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-	repositories {
-		// Add repositories to publish to here.
-		// Notice: This block does NOT have the same function as the block in the top level.
-		// The repositories here will be used for publishing your artifact, not for
-		// retrieving dependencies.
-	}
-}
 
-// Fix launch.cfg paths when project directory contains spaces (Windows)
-tasks.register('fixLaunchCfg') {
-    doLast {
-        def batFile = file('fix_launch_cfg.bat')
-        if (!batFile.exists()) return
 
-        def pb = new ProcessBuilder(batFile.absolutePath)
-        pb.directory(project.projectDir)
-        pb.redirectErrorStream(true)
-        def proc = pb.start()
-        def output = proc.inputStream.text
-        proc.waitFor()
-        if (!output.empty) println output.trim()
-    }
-}
-
-tasks.matching { it.name == 'genSources' }.configureEach {
-    finalizedBy 'fixLaunchCfg'
 }

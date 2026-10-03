@@ -2,7 +2,6 @@ package com.minecartvisualizer.command;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.*;
 import com.mojang.brigadier.arguments.BoolArgumentType;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -17,7 +16,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.HitResult;
@@ -191,13 +189,7 @@ public class MinecartVisualizerCommands {
             context.getSource().sendFeedback(Text.literal(" §8(Empty)"));
         } else {
             for (String id : list) {
-                MutableText feedbackText = Text.literal(" §7- §f" + id).styled(s -> s
-                        .withHoverEvent(new HoverEvent.ShowText(Text.literal("Click to remove")))
-                        .withClickEvent(new ClickEvent.SuggestCommand(
-                                "/MinecartVisualizer filter " + colorName + " " + listType + " remove " + id
-                        ))
-                );
-                context.getSource().sendFeedback(feedbackText);
+                context.getSource().sendFeedback(Text.literal(" §7- §f" + id).styled(s -> s.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to remove"))).withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/MinecartVisualizer filter " + colorName + " " + listType + " remove " + id))));
             }
         }
         return 1;
@@ -300,21 +292,13 @@ public class MinecartVisualizerCommands {
                 Text posText = Text.literal("[" + pos.toShortString() + "]")
                         .styled(style -> style
                                 .withColor(state.getColor().getHex())
-                                // 修正：使用 ClickEvent.SuggestCommand 记录类
-                                .withClickEvent(new ClickEvent.SuggestCommand(
-                                        "/tp @s " + pos.getX() + " " + pos.getY() + " " + pos.getZ()
-                                ))
-                                // 修正：使用 HoverEvent.ShowText 记录类
-                                .withHoverEvent(new HoverEvent.ShowText(
-                                        Text.literal("Click to prepare TP command")
-                                ))
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/tp @s " + pos.getX() + " " + pos.getY() + " " + pos.getZ()))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal("Click to prepare TP command")))
                         );
 
-                Text finalFeedback = Text.literal(" §7- ")
-                        .append(Text.literal(state.getColor().name() + ": ")
-                                .styled(s -> s.withColor(state.getColor().getHex())))
-                        .append(posText);
-                ctx.getSource().sendFeedback(finalFeedback);
+                ctx.getSource().sendFeedback(Text.literal(" §7- ")
+                        .append(Text.literal(state.getColor().name() + ": ").styled(s -> s.withColor(state.getColor().getHex())))
+                        .append(posText));
             });
         }
         return 1;

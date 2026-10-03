@@ -8,6 +8,3 @@ pluginManagement {
 		gradlePluginPortal()
 	}
 }
-
-// Should match your modid
-rootProject.name = 'minecartvisualizer'

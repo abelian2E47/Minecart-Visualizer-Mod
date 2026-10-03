@@ -10,14 +10,13 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.Entity;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.Util;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 
 /**
@@ -32,8 +31,6 @@ public class MinecartClientHandler {
     public static final long MAX_FRESH_AGE_MS = 2000L;
     /** 追踪中的矿车失去同步超过这么多毫秒后静默放弃（不算被摧毁）。 */
     public static final long LOST_CONTACT_MS = 60000L;
-    /** 同一台矿车最多缓存多少条碰撞事件（没有追踪器消费时不会无限增长）。 */
-    private static final int MAX_COLLISION_NOTICES = 32;
 
     private static final Map<UUID, MinecartDataPayload> MINECART_DATA = new ConcurrentHashMap<>();
     private static final Map<UUID, HopperMinecartDataPayload> HOPPER_MINECART_DATA = new ConcurrentHashMap<>();
@@ -46,8 +43,6 @@ public class MinecartClientHandler {
     private static final Map<UUID, Vec3d> SERVER_PREV_POS = new ConcurrentHashMap<>();
     //由服务端销毁通知留下的最后一份数据（含最终坐标与最终物品栏），供追踪器出报告用
     private static final Map<UUID, RemovalNotice> REMOVED_DATA = new ConcurrentHashMap<>();
-    //服务端下发的"被挤压"事件，按矿车排队，由追踪器逐条取用后输出到聊天栏
-    private static final Map<UUID, Deque<MinecartCollisionPayload>> COLLISION_NOTICES = new ConcurrentHashMap<>();
     private static volatile long latestServerTime = -1L;
     private static volatile Map<UUID, MinecartsGroup> uuidToGroup = new ConcurrentHashMap<>();
     private static volatile Set<UUID> currentLeaders = ConcurrentHashMap.newKeySet();
@@ -111,7 +106,7 @@ public class MinecartClientHandler {
 
         //组内顺序按服务端 x 坐标（和分组时的排序一致），领队＝组内第一台，
         //这样"物品栏取第一台的数据"和"文字/框体只画领队"指的是同一台矿车
-        java.util.Map<UUID, Double> posX = new java.util.HashMap<>();
+        Map<UUID, Double> posX = new HashMap<>();
         for (MinecartDataPayload data : activeCarts) {
             posX.put(data.uuid(), data.pos().x);
         }
@@ -243,16 +238,6 @@ public class MinecartClientHandler {
         ClientPlayNetworking.registerGlobalReceiver(HopperMinecartDataPayload.ID,
                 (payload, context) -> MinecraftClient.getInstance().execute(() -> HOPPER_MINECART_DATA.put(payload.uuid(), payload)));
 
-        ClientPlayNetworking.registerGlobalReceiver(MinecartCollisionPayload.ID,
-                (payload, context) -> MinecraftClient.getInstance().execute(() -> {
-                    Deque<MinecartCollisionPayload> queue =
-                            COLLISION_NOTICES.computeIfAbsent(payload.uuid(), uuid -> new ConcurrentLinkedDeque<>());
-                    queue.addLast(payload);
-                    while (queue.size() > MAX_COLLISION_NOTICES) {
-                        queue.pollFirst();
-                    }
-                }));
-
         ClientPlayNetworking.registerGlobalReceiver(TNTMinecartDataPayload.ID,
                 (payload, context) -> MinecraftClient.getInstance().execute(() -> {
                     TNT_MINECART_DATA.put(payload.uuid(), payload);
@@ -344,17 +329,6 @@ public class MinecartClientHandler {
         return REMOVED_DATA.remove(uuid);
     }
 
-    /**
-     * 取走该矿车最早的一条"被挤压"事件；没有则返回 {@code null}。
-     *
-     * <p>只有真的在追踪这台矿车（存在追踪器）时才有人来取，所以"没被追踪就不输出"
-     * 是天然成立的，不需要额外判断。</p>
-     */
-    public static MinecartCollisionPayload pollCollision(UUID uuid) {
-        Deque<MinecartCollisionPayload> queue = COLLISION_NOTICES.get(uuid);
-        return queue == null ? null : queue.pollFirst();
-    }
-
     public static void recordServerPos(UUID uuid, Vec3d pos) {
         if (pos == null) return;
 
@@ -409,8 +383,6 @@ public class MinecartClientHandler {
         LAST_UPDATE_MS.keySet().removeIf(uuid -> !MINECART_DATA.containsKey(uuid));
         SERVER_POS.keySet().removeIf(uuid -> !MINECART_DATA.containsKey(uuid));
         SERVER_PREV_POS.keySet().removeIf(uuid -> !MINECART_DATA.containsKey(uuid));
-        //碰撞事件按矿车排队：没人取（没被追踪）就随时间清掉，避免无限增长
-        COLLISION_NOTICES.keySet().removeIf(uuid -> !MINECART_DATA.containsKey(uuid));
         //销毁通知留一段时间给追踪器取用，之后丢弃，避免无限增长
         REMOVED_DATA.entrySet().removeIf(entry -> !isPending(entry.getKey()));
     }
@@ -429,7 +401,6 @@ public class MinecartClientHandler {
         SERVER_POS.clear();
         SERVER_PREV_POS.clear();
         REMOVED_DATA.clear();
-        COLLISION_NOTICES.clear();
         latestServerTime = -1L;
         uuidToGroup.clear();
         currentLeaders.clear();

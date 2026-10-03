@@ -20,6 +20,7 @@ public abstract class AbstractMinecartEntityMixin extends Entity {
 
     @Inject(at = @At("TAIL"), method = "tick")
     public void sendMinecartData(CallbackInfo ci) {
+        //统一走 MinecartDataSender：里面带 canSend 校验，并补上服务端时间戳
         MinecartDataSender.sendMinecart((AbstractMinecartEntity) (Object) this, false);
     }
 }

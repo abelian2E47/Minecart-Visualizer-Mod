@@ -1,27 +1,41 @@
 package com.minecartvisualizer;
 
-import net.minecraft.client.gl.RenderPipelines;
-import net.minecraft.client.render.*;
+import net.minecraft.client.gl.ShaderProgramKeys;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.RenderPhase;
+import net.minecraft.client.render.VertexFormat;
+import net.minecraft.client.render.VertexFormats;
 
+import java.util.OptionalDouble;
 
-public class CustomRenderLayers {
+/** 本模组自建的渲染层。 */
+public final class CustomRenderLayers {
 
+    private CustomRenderLayers() {
+    }
 
-    public static final RenderLayer CUSTOM_BACKGROUND = RenderLayer.of(
-            "custom_gui_background",
-            RenderSetup.builder(RenderPipelines.GUI)
-                    .layeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
-                    .translucent()
-                    .outputTarget(OutputTarget.MAIN_TARGET)
-                    .build()
-    );
-
-    public static final RenderLayer CUSTOM_LINES = RenderLayer.of(
-            "custom_lines",
-            RenderSetup.builder(RenderPipelines.LINES)
-                    .outputTarget(OutputTarget.MAIN_TARGET)
-                    .layeringTransform(LayeringTransform.VIEW_OFFSET_Z_LAYERING)
-                    .translucent()
-                    .build()
+    /**
+     * 与 {@link RenderLayer#LINES} 参数相同，但绘制目标是主帧缓冲（{@link RenderPhase#MAIN_TARGET}）。
+     *
+     * <p>{@code RenderLayer.LINES} 的目标是 item_entity 帧缓冲，而该帧缓冲早在
+     * {@code WorldRenderer#render} 内部就已被合成进主帧缓冲，因此想在
+     * {@code render} 末尾做置顶绘制时必须显式指定主帧缓冲。</p>
+     */
+    public static final RenderLayer LINES_ON_TOP = RenderLayer.of(
+            "minecartvisualizer_lines_on_top",
+            VertexFormats.LINES,
+            VertexFormat.DrawMode.LINES,
+            1536,
+            false,
+            false,
+            RenderLayer.MultiPhaseParameters.builder()
+                    .program(new RenderPhase.ShaderProgram(ShaderProgramKeys.RENDERTYPE_LINES))
+                    .lineWidth(new RenderPhase.LineWidth(OptionalDouble.empty()))
+                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING)
+                    .transparency(RenderPhase.TRANSLUCENT_TRANSPARENCY)
+                    .target(RenderPhase.MAIN_TARGET)
+                    .writeMaskState(RenderPhase.ALL_MASK)
+                    .cull(RenderPhase.DISABLE_CULLING)
+                    .build(false)
     );
 }
