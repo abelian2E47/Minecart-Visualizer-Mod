@@ -306,22 +306,46 @@ public class InfoRenderer {
      *     即 1×1、从 +11/16 格到 +2 格的柱体，搜索上方掉落的物品实体。</li>
      * </ul>
      */
-    public static Box[] buildHopperRangeBoxes(Entity entity) {
-        Box pickupBox = entity.getBoundingBox().expand(0.25, 0.0, 0.25);
+    /**
+     * 构建漏斗矿车的两个吸取范围框（世界坐标），元素 0 为掉落物吸取范围，元素 1 为上方输入区域。
+     *
+     * <p>两者都直接对应原版代码里实际用于搜索物品实体的区域：</p>
+     * <ul>
+     *     <li>{@code HopperMinecartEntity#canOperate()} 用
+     *     {@code getBoundingBox().expand(0.25, 0.0, 0.25)} 搜索周围的掉落物；</li>
+     *     <li>{@code HopperBlockEntity#getInputItemEntities()} 用
+     *     {@code Hopper.INPUT_AREA_SHAPE.offset(hopperX - 0.5, hopperY - 0.5, hopperZ - 0.5)}，
+     *     即 1×1、从 +11/16 格到 +2 格的柱体，搜索上方掉落的物品实体。</li>
+     * </ul>
+     *
+     * @param hopperPos 服务端权威的矿车坐标（{@code MinecartDataPayload#pos()}），
+     *                  而不是客户端插值出来的位置，保证框体画在服务端真实位置
+     */
+    public static Box[] buildHopperRangeBoxes(Entity entity, Vec3d hopperPos) {
+        Box pickupBox = entity.getBoundingBox().offset(
+                hopperPos.x - entity.getX(), hopperPos.y - entity.getY(), hopperPos.z - entity.getZ()
+        ).expand(0.25, 0.0, 0.25);
 
         // 漏斗矿车的 getHopperX/Y/Z 分别是 getX()、getY() + 0.5、getZ()
         Box inputAreaBox = Hopper.INPUT_AREA_SHAPE.offset(
-                entity.getX() - 0.5, entity.getY(), entity.getZ() - 0.5);
+                hopperPos.x - 0.5, hopperPos.y, hopperPos.z - 0.5);
 
         return new Box[]{pickupBox, inputAreaBox};
     }
 
-    /** 直接在当前渲染流程中绘制吸取范围框（不置顶）。 */
-    public static void renderHopperRanges(Entity entity, double cameraX, double cameraY, double cameraZ,
-                                          MatrixStack matrices, VertexConsumerProvider vertexConsumers,
+    /**
+     * 直接在当前渲染流程中绘制吸取范围框（不置顶）。
+     *
+     * <p>注意：这里必须用单位矩阵栈。调用方传来的是实体渲染栈，而 1.21.11 的
+     * {@code EntityRenderManager} 已经在调用渲染器前把它平移到了"矿车相对相机"的位置，
+     * 下面的坐标又是相机相对坐标，两者叠加会让框体被平移两次、画到离矿车很远的地方。</p>
+     */
+    public static void renderHopperRanges(Entity entity, Vec3d hopperPos, double cameraX, double cameraY, double cameraZ,
+                                          VertexConsumerProvider vertexConsumers,
                                           float[] pickupColor, float[] extractionColor, float scale) {
         VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_LINES);
-        Box[] boxes = buildHopperRangeBoxes(entity);
+        Box[] boxes = buildHopperRangeBoxes(entity, hopperPos);
+        MatrixStack matrices = new MatrixStack();
 
         drawScaledBox(matrices, lines, boxes[0].offset(-cameraX, -cameraY, -cameraZ), scale,
                 pickupColor[0], pickupColor[1], pickupColor[2], 0.8f);
@@ -335,26 +359,27 @@ public class InfoRenderer {
     }
 
     /**
-     * 按原版 {@code HopperBlockEntity#extract(World, Hopper)} 的逻辑找出上方真正会被吸取的对象：
-     * 先找漏斗正上方的容器方块，再找该点上的实体容器。
+     * 把服务端算好的吸取目标加入高亮队列。
      *
-     * <p>吸取目标方块的位置取自 {@code BlockPos.ofFloored(hopperX, hopperY + 1.0, hopperZ)}，
-     * 实体容器的搜索范围取自 {@code HopperBlockEntity#getEntityInventoryAt} 的
-     * {@code Box(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5)}。</p>
+     * <p>目标完全由服务端给出（{@code HopperMinecartDataPayload#extractionBlock()} /
+     * {@code extractionEntities()}），客户端不再自己去查方块和实体：
+     * 客户端的世界数据可能滞后，远距离时甚至没有区块数据，自己算会漏判或画错。</p>
      *
      * <p>方块以自身的轮廓形状入队（与原版方块描边一致），因此形状不是完整方块的容器
-     * （漏斗、堆肥桶、饰纹陶罐等）也能画出完整轮廓线。</p>
+     * （漏斗、堆肥桶、饰纹陶罐等）也能画出完整轮廓线；实体直接用服务端给的碰撞箱。</p>
      */
-    public static boolean queueExtractionTargets(Entity entity, float scale) {
-        World world = entity.getEntityWorld();
+    public static boolean queueExtractionTargets(HopperMinecartDataPayload hopperData, float scale) {
+        if (hopperData == null) {
+            return false;
+        }
+
+        World world = MinecraftClient.getInstance().world;
         boolean hasTarget = false;
 
-        HopperMinecartEntity hopperMinecart = (HopperMinecartEntity) entity;
-
-        BlockPos targetPos = BlockPos.ofFloored(
-                hopperMinecart.getHopperX(), hopperMinecart.getHopperY() + 1.0, hopperMinecart.getHopperZ());
-        BlockState state = world.getBlockState(targetPos);
-        if (hasInventory(world, targetPos, state)) {
+        Optional<BlockPos> extractionBlock = hopperData.extractionBlock();
+        if (extractionBlock.isPresent() && world != null) {
+            BlockPos targetPos = extractionBlock.get();
+            BlockState state = world.getBlockState(targetPos);
             // 与原版方块描边相同：优先使用轮廓形状，没有轮廓时退回碰撞形状
             VoxelShape shape = state.getOutlineShape(world, targetPos);
             if (shape.isEmpty()) {
@@ -368,28 +393,30 @@ public class InfoRenderer {
             }
         }
 
-        Box extractionArea = new Box(
-                entity.getX() - 0.5, entity.getY() + 1.0, entity.getZ() - 0.5,
-                entity.getX() + 0.5, entity.getY() + 2.0, entity.getZ() + 0.5
-        );
-
-        for (Entity inventory : world.getOtherEntities(entity, extractionArea, EntityPredicates.VALID_INVENTORIES)) {
+        for (Box extractionBox : hopperData.extractionEntities()) {
             // 实体的轮廓即其碰撞箱，形状坐标已是世界坐标，所以原点取零向量
             queuedExtractionTargets.add(new QueuedExtractionTarget(
-                    VoxelShapes.cuboid(inventory.getBoundingBox()), Vec3d.ZERO, scale));
+                    VoxelShapes.cuboid(extractionBox), Vec3d.ZERO, scale));
             hasTarget = true;
         }
 
         return hasTarget;
     }
 
-    /** 原版 {@code HopperBlockEntity#getBlockInventoryAt}：方块自己提供容器，或方块实体实现了 Inventory。 */
-    private static boolean hasInventory(World world, BlockPos pos, BlockState state) {
-        if (state.getBlock() instanceof InventoryProvider) {
+    /**
+     * 待显示的内容是否还在配置的显示距离内。
+     *
+     * <p>服务端只在下发半径内广播状态（与显示距离上限一致），超出的矿车只有过期数据，
+     * 与其画一份不准确的内容，不如和文字一样按 {@code infoRenderDistance} 不显示。</p>
+     */
+    public static boolean isWithinDisplayDistance(Vec3d pos) {
+        PlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null || pos == null) {
             return true;
         }
 
-        return state.hasBlockEntity() && world.getBlockEntity(pos) instanceof Inventory;
+        double limit = MinecartVisualizerConfig.getInstance().infoRenderDistance;
+        return player.squaredDistanceTo(pos) <= limit * limit;
     }
 
 

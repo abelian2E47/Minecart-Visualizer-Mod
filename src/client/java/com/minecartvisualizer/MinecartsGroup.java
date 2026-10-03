@@ -6,7 +6,7 @@ import java.util.UUID;
 
 public class MinecartsGroup {
     private final List<UUID> minecarts = new ArrayList<>();
-    private final UUID leader;
+    private UUID leader;
 
     public MinecartsGroup(UUID leader){
         this.leader = leader;
@@ -17,8 +17,16 @@ public class MinecartsGroup {
         minecarts.add(uuid);
     }
 
-    public void sort() {
-        minecarts.sort(Comparator.comparing(UUID::toString));
+    /**
+     * 按给定顺序（实际是服务端 x 坐标）排列组内矿车，并把领队设为第一台。
+     *
+     * <p>领队必须和 {@link #getMinecarts()} 的第一个元素一致：合并显示时物品栏取的是
+     * 第一台矿车的数据，而文字/框体是否绘制看的是领队，两者不一致就会出现
+     * "面板显示的是另一台矿车的物品"以及同一个堆叠画出多份面板。</p>
+     */
+    public void sort(Comparator<UUID> comparator) {
+        minecarts.sort(comparator);
+        leader = minecarts.getFirst();
     }
 
     public List<UUID> getMinecarts(){

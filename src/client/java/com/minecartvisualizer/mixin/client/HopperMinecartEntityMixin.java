@@ -27,7 +27,8 @@ public abstract class HopperMinecartEntityMixin extends Entity {
     @Inject(method = "getDefaultContainedBlock", at = @At("RETURN"), cancellable = true)
     private void displayLockedHopperWhenLocked(CallbackInfoReturnable<BlockState> cir) {
         if (MinecartVisualizerConfig.getInstance().enableHopperMinecartEnableDisplay){
-            HopperMinecartDataPayload data = MinecartClientHandler.getHopperMinecartData(this.getUuid());
+            //数据不新鲜时（矿车跑出服务端广播范围）不接管模型：否则"漏斗被锁"的外观会一直冻在那儿
+            HopperMinecartDataPayload data = MinecartClientHandler.getFreshHopperMinecartData(this.getUuid());
             if (data != null && !data.enable()) {
                 BlockState state = cir.getReturnValue();
                 if (state != null) {

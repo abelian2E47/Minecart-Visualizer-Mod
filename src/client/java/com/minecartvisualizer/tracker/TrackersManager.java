@@ -84,8 +84,11 @@ public class TrackersManager {
         for (Map.Entry<TrackerColor, TrackerCounter> entry : counters.entrySet()) {
             TrackerCounter counter = entry.getValue();
 
-            //检查开关状态
-            if (counter.isEnable()&&counter.isActive()) {
+            //检查开关状态。
+            //注意这里不再要求 isActive()：isActive() 表示"当前物品栏里有东西"，
+            //用它当计时门槛会让运行时长从第一次装到物品才开始算，/h 速率被整体放大。
+            //运行时长应该从计数器启用那一刻开始按服务端 tick 累积。
+            if (counter.isEnable()) {
                 counter.tick();
             }
         }

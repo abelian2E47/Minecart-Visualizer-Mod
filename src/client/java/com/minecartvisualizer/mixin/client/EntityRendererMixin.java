@@ -22,6 +22,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.Box;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -63,36 +64,36 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         }
 
         MinecraftClient client = MinecraftClient.getInstance();
-        double cameraX = client.gameRenderer.getCamera().getCameraPos().x;
-        double cameraY = client.gameRenderer.getCamera().getCameraPos().y;
-        double cameraZ = client.gameRenderer.getCamera().getCameraPos().z;
-        client.getRenderTickCounter().getTickProgress(true);
+        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+        double cameraX = cameraPos.x;
+        double cameraY = cameraPos.y;
+        double cameraZ = cameraPos.z;
         VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
 
+        //服务端权威坐标：在最近两次服务端广播之间按渲染进度插值；没有服务端数据时退回客户端渲染坐标
+        Vec3d serverPos = MinecartClientHandler.getServerPos(
+                entity.getUuid(), client.getRenderTickCounter().getTickProgress(true));
+        Vec3d anchor = serverPos != null ? serverPos : new Vec3d(renderState.x, renderState.y, renderState.z);
+
         if (entity instanceof HopperMinecartEntity) {
-            HopperMinecartDataPayload hopperMinecartData = MinecartClientHandler.getHopperMinecartData(entity.getUuid());
-            if (!InfoRenderer.shouldRender(entity)) {
-                if (MinecartVisualizerClient.uuid != null && entity.getUuid().equals(MinecartVisualizerClient.uuid)) {
-                    hopperMinecartData = MinecartClientHandler.getHopperMinecartData(MinecartVisualizerClient.uuid);
-                }
-            }
-            if (hopperMinecartData != null) {
+            //只在数据仍然新鲜时绘制：服务端停止广播（走远、区块未加载）后不再画过期内容
+            HopperMinecartDataPayload hopperMinecartData = MinecartClientHandler.getFreshHopperMinecartData(entity.getUuid());
+            if (hopperMinecartData != null && InfoRenderer.shouldRender(entity)) {
                 MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
                 boolean isLocked = !hopperMinecartData.enable();
-                renderHopperMinecartInfo(hopperMinecartData, entity, group, isLocked, renderState, cameraX, cameraY, cameraZ, matrices, vertexConsumers, queue);
+                renderHopperMinecartInfo(hopperMinecartData, entity, group, isLocked, anchor, cameraX, cameraY, cameraZ, matrices, vertexConsumers);
             }
         }
 
         MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
-        renderTextInfo(entity, group, matrices, vertexConsumers);
+        renderTextInfo(entity, group, renderState, anchor, matrices, vertexConsumers);
     }
 
     @Unique
     private void renderHopperMinecartInfo(HopperMinecartDataPayload hopperMinecartData,T entity, MinecartsGroup group,
-                                          boolean isLocked, S renderState,
+                                          boolean isLocked, Vec3d anchor,
                                           double cameraX, double cameraY, double cameraZ,
-                                          MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers,
-                                          OrderedRenderCommandQueue queue) {
+                                          MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers) {
         var config = MinecartVisualizerConfig.getInstance();
         if (config.enableHopperMinecartInventoryDisplay) {
             int slotsPerMinecart = 0;
@@ -105,19 +106,19 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 int totalSlots = config.foldInventory ? slotsPerMinecart : minecarts.size() * slotsPerMinecart;
                 if (config.foldInventory) {
                     UUID leaderUuid = minecarts.getFirst();
-                    HopperMinecartDataPayload data = MinecartClientHandler.getHopperMinecartData(leaderUuid);
+                    HopperMinecartDataPayload data = MinecartClientHandler.getFreshHopperMinecartData(leaderUuid);
                     if (data != null) {
                         List<ItemStack> filteredItems = InfoRenderer.filterItems(data.items());
                         int finalCols = getFinalCols.apply(totalSlots);
                         InfoRenderer.queueInventory(
                                 filteredItems, entity.getEntityWorld(),
-                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
+                                anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                         );
                     }
                 } else {
                     List<ItemStack> allItems = new ArrayList<>();
                     for (UUID minecartUuid : minecarts) {
-                        HopperMinecartDataPayload data = MinecartClientHandler.getHopperMinecartData(minecartUuid);
+                        HopperMinecartDataPayload data = MinecartClientHandler.getFreshHopperMinecartData(minecartUuid);
                         if (data != null) {
                             allItems.addAll(data.items());
                         }
@@ -127,7 +128,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                         int finalCols = getFinalCols.apply(totalSlots);
                         InfoRenderer.queueInventory(
                                 filteredItems, entity.getEntityWorld(),
-                                renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
+                                anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                         );
                     }
                 }
@@ -137,14 +138,23 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 int finalCols = getFinalCols.apply(totalSlots);
                 InfoRenderer.queueInventory(
                         filteredItems, entity.getEntityWorld(),
-                        renderState.x, renderState.y, renderState.z, totalSlots, finalCols, isLocked
+                        anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                 );
             }
         }
 
         if (!isLocked && (config.highlightExtractionTargets || config.renderHopperRanges)) {
-            if (config.renderHopperRanges) {
-                Box[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity);
+            //先判断这台矿车这一帧有没有吸取目标：有目标就只高亮目标，不再重复画范围框
+            //（每台矿车各自判断，避免"任意一台有目标就整帧都不画"）
+            boolean hasTarget = false;
+            if (config.highlightExtractionTargets) {
+                //吸取目标直接来自服务端广播
+                hasTarget = InfoRenderer.queueExtractionTargets(hopperMinecartData, config.extractionTargetBoxScale);
+            }
+
+            if (!hasTarget && config.renderHopperRanges) {
+                //范围框用服务端权威坐标构建立方体
+                Box[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity, anchor);
                 float rangeScale = config.hopperRangeBoxScale;
                 float[] pickupColor = Colors.rgbFloats(config.pickupRangeColor,
                         MinecartVisualizerConfig.DEFAULT_PICKUP_RANGE_COLOR.getRGB());
@@ -155,18 +165,15 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                     InfoRenderer.queueWorldBox(rangeBoxes[0], rangeScale, pickupColor);
                     InfoRenderer.queueWorldBox(rangeBoxes[1], rangeScale, extractionColor);
                 } else {
-                    InfoRenderer.renderHopperRanges(entity, cameraX, cameraY, cameraZ, matrices, vertexConsumers,
+                    InfoRenderer.renderHopperRanges(entity, anchor, cameraX, cameraY, cameraZ, vertexConsumers,
                             pickupColor, extractionColor, rangeScale);
                 }
-            }
-            if (config.highlightExtractionTargets) {
-                InfoRenderer.queueExtractionTargets(entity, config.extractionTargetBoxScale);
             }
         }
     }
 
     @Unique
-    private void renderTextInfo(T entity, MinecartsGroup group,
+    private void renderTextInfo(T entity, MinecartsGroup group, S renderState, Vec3d anchor,
                                 MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers) {
         var config = MinecartVisualizerConfig.getInstance();
         if (!config.enableMinecartVisualization) return;
@@ -176,13 +183,12 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         if (player != null && entity.squaredDistanceTo(player) > config.infoRenderDistance * config.infoRenderDistance) return;
         if (config.mergeStackingMinecartInfo && group != null && !entity.getUuid().equals(group.getLeader())) return;
 
-        MinecartDataPayload displayInfo = MinecartClientHandler.getMinecartData(entity.getUuid());
+        MinecartDataPayload displayInfo = MinecartClientHandler.getFreshMinecartData(entity.getUuid());
         if (displayInfo == null) return;
         TNTMinecartDataPayload tntMinecartDisplayInfo = null;
         if (config.trackTNTMinecart && entity instanceof TntMinecartEntity) {
             tntMinecartDisplayInfo = MinecartClientHandler.getTNTMinecartData(entity.getUuid());
         }
-
         List<MutableText> infoTexts = new ArrayList<>(InfoRenderer.getInfoTexts(displayInfo));
 
         if (tntMinecartDisplayInfo != null) {
@@ -209,7 +215,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 targetUuid = entity.getUuid();
             }
 
-            HopperMinecartDataPayload hopperData = MinecartClientHandler.getHopperMinecartData(targetUuid);
+            HopperMinecartDataPayload hopperData = MinecartClientHandler.getFreshHopperMinecartData(targetUuid);
             if (hopperData != null) {
                 int signal = calculateRedstoneSignal(hopperData.items());
                 infoTexts.add(Text.translatable("info.minecartvisualizer.signal", signal).formatted(Formatting.RED));
@@ -241,8 +247,14 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         double textYOffset = getTextYOffset(entity, group, config);
 
+        //文字整体锚定到服务端权威坐标（与框体、物品栏同一套坐标），
+        //偏移量就是服务端坐标与客户端渲染坐标之差，没有服务端数据时为 0
+        double offsetX = anchor.x - renderState.x;
+        double offsetY = anchor.y - renderState.y;
+        double offsetZ = anchor.z - renderState.z;
+
         matrices.push();
-        matrices.translate(0, textYOffset, 0);
+        matrices.translate(offsetX, textYOffset + offsetY, offsetZ);
         InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers,
                 Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000);
         matrices.pop();

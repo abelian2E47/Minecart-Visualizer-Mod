@@ -58,12 +58,11 @@ public abstract class WorldRenderMixin {
         try {
             MinecraftClient client = MinecraftClient.getInstance();
             RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(client.getFramebuffer().getDepthAttachment(), 1.0);
-            if (!InfoRenderer.renderQueuedExtractionTargets()){
-                InfoRenderer.renderQueuedWorldBoxes();
-                InfoRenderer.renderQueuedInventories();
-            }
-
-
+            //三者互不排斥，各自在没有内容时自己返回。
+            //（旧代码是"有吸取目标就整帧不画物品栏和范围框"，任何一台矿车有目标都会让全场面板闪烁消失。）
+            InfoRenderer.renderQueuedExtractionTargets();
+            InfoRenderer.renderQueuedWorldBoxes();
+            InfoRenderer.renderQueuedInventories();
         } finally {
             modelViewStack.popMatrix();
         }

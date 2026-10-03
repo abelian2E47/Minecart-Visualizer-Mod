@@ -1,6 +1,7 @@
     package com.minecartvisualizer.tracker;
 
-    import com.minecartvisualizer.MinecartClientHandler;
+    import com.minecartvisualizer.MinecartDataPayload;
+import com.minecartvisualizer.MinecartClientHandler;
     import com.minecartvisualizer.config.MinecartVisualizerConfig;
     import net.minecraft.client.network.ClientPlayerEntity;
     import net.minecraft.item.ItemStack;
@@ -27,8 +28,13 @@
         private final UUID uuid;
         private final int id;
         private final ClientPlayerEntity player;
-        private final long trackStartTime;
+        //追踪开始时的服务端时间（tick）；运行时长按服务端 tick 计，客户端卡顿/暂停不会让它漂移
+        private final long trackStartServerTime;
+        private long lastKnownServerTime;
         private long runTime;
+        private long lastTrailServerTime = -1L;
+        //最近一次确认数据仍然新鲜的时刻（毫秒），用于判断是不是彻底失联
+        private long lastFreshMs;
         private Vec3d leastPos = null;
         private List<ItemStack> lastInv = null;
         private final TrackerFilter filter;
@@ -45,7 +51,9 @@
             this.shortUuid = uuid.toString().substring(0, 4);
             this.trackerColor = trackerColor;
             this.player = player;
-            trackStartTime = player.getEntityWorld().getTime();
+            trackStartServerTime = MinecartClientHandler.getLatestServerTime();
+            lastKnownServerTime = Math.max(0L, trackStartServerTime);
+            lastFreshMs = MinecartClientHandler.nowMs();
             this.filter = TrackersManager.filters.get(trackerColor);
             runTime = 0;
             this.tick();
@@ -53,34 +61,42 @@
 
         public void tick() {
             var config = MinecartVisualizerConfig.getInstance();
-            var minecartData = MinecartClientHandler.getMinecartData(uuid);
-            var hopperData = MinecartClientHandler.getHopperMinecartData(uuid);
-            long currentTime = player.getEntityWorld().getTime();
-            runTime = currentTime - trackStartTime;
 
-            if (player.getEntityWorld().getEntityById(id) == null || minecartData == null || hopperData == null) {
-                if (firstChangeTick != -1) sendInventoryMessage(lastInv);
-                //矿车摧毁行为
-                if (leastPos != null) {
-                    if (config.outputWhenDestroyed){
-                        sendDestroyedMessage();
-                    }
-                    recordCounterStats(lastInv, RecordType.DROPS, null);
-                    TrackersManager.getCounter(trackerColor).recordTrackerRemoval((int) (currentTime-trackStartTime));
-                }
-                this.removed = true;
+            //服务端明确通知销毁：这是唯一的"矿车被摧毁"判据
+            MinecartClientHandler.RemovalNotice removal = MinecartClientHandler.consumeRemoval(uuid);
+            if (removal != null) {
+                handleRemoval(removal, config);
                 return;
             }
+
+            var minecartData = MinecartClientHandler.getFreshMinecartData(uuid);
+            var hopperData = MinecartClientHandler.getFreshHopperMinecartData(uuid);
+
+            if (minecartData == null || hopperData == null) {
+                //没数据不等于被摧毁：可能只是走远、区块没加载、或者服务端刚好没广播。
+                //这里保持追踪器存活但停止统计，彻底失联很久后静默放弃（不发"被摧毁"的误报）。
+                if (MinecartClientHandler.nowMs() - lastFreshMs > MinecartClientHandler.LOST_CONTACT_MS) {
+                    TrackersManager.getCounter(trackerColor).recordTrackerRemoval((int) runTime);
+                    this.removed = true;
+                }
+                return;
+            }
+
+            long currentTime = minecartData.serverTime();
+            lastKnownServerTime = currentTime;
+            lastFreshMs = MinecartClientHandler.nowMs();
+            runTime = currentTime - trackStartServerTime;
 
             this.leastPos = minecartData.pos();
             List<ItemStack> currentInv = hopperData.items();
 
             Vec3d currentPos = minecartData.pos();
 
-            //轨迹记录
-//            if (config.trackMinecartTrail){
-//                updateTrail(currentPos, config.maxTrailPoints);
-//            }
+            //轨迹记录：按服务端 tick 采样（同一服务端 tick 只记一个点），而不是按客户端 tick
+            if (config.trackMinecartTrail && currentTime != lastTrailServerTime) {
+                lastTrailServerTime = currentTime;
+                updateTrail(currentPos, config.maxTrailPoints);
+            }
 
             //物品栏更改则记录
             boolean changed = hasInventoryChanged(currentInv);
@@ -102,6 +118,33 @@
             if (changed || lastInv == null) {
                 this.lastInv = copyInventory(currentInv);
             }
+        }
+
+        /** 服务端通知矿车已被销毁：用服务端补发的最后一份数据出报告。 */
+        private void handleRemoval(MinecartClientHandler.RemovalNotice removal, MinecartVisualizerConfig config) {
+            MinecartDataPayload finalData = removal.data();
+            if (finalData != null) {
+                this.leastPos = finalData.pos();
+                lastKnownServerTime = Math.max(lastKnownServerTime, finalData.serverTime());
+                runTime = lastKnownServerTime - trackStartServerTime;
+            }
+
+            List<ItemStack> finalInv = lastInv;
+            if (removal.hopper() != null) {
+                finalInv = removal.hopper().items();
+            }
+
+            if (firstChangeTick != -1) {
+                sendInventoryMessage(finalInv);
+            }
+
+            if (config.outputWhenDestroyed) {
+                sendDestroyedMessage(finalInv);
+            }
+            recordCounterStats(finalInv, RecordType.DROPS, null);
+            TrackersManager.getCounter(trackerColor).recordTrackerRemoval((int) runTime);
+
+            this.removed = true;
         }
 
         private boolean hasInventoryChanged(List<ItemStack> currentInv) {
@@ -225,8 +268,8 @@
             resetTrackingState();
         }
 
-        //矿车摧毁
-        private void sendDestroyedMessage() {
+        //矿车摧毁（使用服务端补发的最终坐标与最终物品栏）
+        private void sendDestroyedMessage(List<ItemStack> finalInv) {
             var config = MinecartVisualizerConfig.getInstance();
             MutableText message = Text.literal("■ ").withColor(trackerColor.getHex());
 
@@ -252,9 +295,9 @@
                 }
             }
 
-            if (config.printInventory && lastInv != null && !lastInv.isEmpty()) {
-                for (int i = 0; i < lastInv.size(); i++) {
-                    ItemStack item = lastInv.get(i);
+            if (config.printInventory && finalInv != null && !finalInv.isEmpty()) {
+                for (int i = 0; i < finalInv.size(); i++) {
+                    ItemStack item = finalInv.get(i);
                     if (!item.isEmpty()) {
                         MutableText itemLine = Text.literal("\n  ")
                                 .append(item.getItemName().copy().formatted(Formatting.WHITE))

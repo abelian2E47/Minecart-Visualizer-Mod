@@ -1,5 +1,6 @@
 package com.minecartvisualizer.tracker;
 
+import com.minecartvisualizer.MinecartClientHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
@@ -17,6 +18,8 @@ public class TrackerCounter {
     private double avgLifetime;
     private int totalDestroyedTrackers;
     private boolean enable;
+    //上一次统计到的服务端时间，用于按服务端 tick 累计运行时长
+    private long lastServerTime = -1L;
 
     public TrackerCounter(TrackerColor color){
         this.color = color;
@@ -99,14 +102,28 @@ public class TrackerCounter {
         runTime = 0;
         avgLifetime = 0;
         totalDestroyedTrackers = 0;
+        lastServerTime = -1L;
         increase.clear();
         decrease.clear();
         destroyedDrops.clear();
     }
 
+    /**
+     * 按服务端 tick 累计统计时长。
+     *
+     * <p>原来按客户端 tick 累加，客户端卡顿、掉帧或单机暂停都会让"RunTime / 每小时速率"
+     * 与真实进度不一致；现在以服务端下发的时间为准，服务端没在广播时就不推进。</p>
+     */
     public void tick() {
         if (!enable) return;
-        runTime++;
+        long serverTime = MinecartClientHandler.getLatestServerTime();
+        if (serverTime < 0) return;
+
+        if (lastServerTime >= 0 && serverTime > lastServerTime) {
+            long delta = serverTime - lastServerTime;
+            runTime += (int) Math.min(delta, Integer.MAX_VALUE - (long) runTime);
+        }
+        lastServerTime = serverTime;
     }
 
     public void toggle(){
