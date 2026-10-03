@@ -244,8 +244,13 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         matrices.push();
         matrices.translate(0.0, textYOffset, 0.0);
-        InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers,
-                Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000);
+        int infoTextColor = Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000;
+        if (config.infoTextOnTop) {
+            //置顶渲染：不在这里画，交给置顶阶段（清空深度之后）统一绘制
+            InfoRenderer.queueInfoTexts(infoTexts, entity, matrices, infoTextColor);
+        } else {
+            InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers, infoTextColor);
+        }
         matrices.pop();
     }
 

@@ -63,6 +63,8 @@ public abstract class WorldRenderMixin {
             InfoRenderer.renderQueuedExtractionTargets();
             InfoRenderer.renderQueuedWorldBoxes();
             InfoRenderer.renderQueuedInventories();
+            //悬浮信息文本开启置顶渲染时也在此绘制（面板之后，压在面板之上）
+            InfoRenderer.renderQueuedInfoTexts();
         } finally {
             modelViewStack.popMatrix();
         }
@@ -83,6 +85,9 @@ public abstract class WorldRenderMixin {
         if (!hasTrails && !hasPoints) return;
 
         var customPass = frameGraphBuilder.createPass("minecart_custom_overlay");
+        //帧图只会执行"根 pass"（拥有输出资源的 pass）及其依赖，未被任何 pass 依赖的 pass 会被剔除；
+        //本 pass 既不产出资源也不被他人依赖，必须显式标记，否则 setRenderer 里的绘制永远不会执行（轨迹线与追踪点框都不显示）。
+        customPass.markToBeVisited();
         customPass.setRenderer(() -> {
             VertexConsumerProvider.Immediate consumers = MinecraftClient.getInstance().getBufferBuilders().getEntityVertexConsumers();
             VertexConsumer lineConsumer = consumers.getBuffer(RenderLayers.LINES);
