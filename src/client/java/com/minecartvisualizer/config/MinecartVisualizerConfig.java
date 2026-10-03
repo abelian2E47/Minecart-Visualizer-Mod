@@ -40,6 +40,7 @@ public final class MinecartVisualizerConfig {
     // --- 信息文本设置 ---
     @SerialEntry public boolean enableDirectionDisplay = true;
     @SerialEntry public boolean enableInfoTextDisplay = true;
+    @SerialEntry public boolean infoTextOnTop = true;
     @SerialEntry public boolean enablePosTextDisplay = true;
     @SerialEntry public boolean enableVelocityTextDisplay = false;
     @SerialEntry public boolean enableYawTextDisplay = false;
@@ -102,6 +103,15 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean printDuration = true;
     @SerialEntry public boolean printPosition = true;
     @SerialEntry public int maxTrailPoints = 200;
+
+    // --- 矿车挤压提示 ---
+    @SerialEntry public boolean outputOnCollision = false;
+    @SerialEntry public float collisionMomentumThreshold = 0.02f;
+    @SerialEntry public int collisionMessageCooldown = 10;
+    @SerialEntry public boolean printCollisionPosition = true;
+    @SerialEntry public boolean printCollisionMomentum = false;
+    @SerialEntry public boolean printCollisionSpeedChange = false;
+    @SerialEntry public boolean printCollisionTarget = true;
 
     public static MinecartVisualizerConfig getInstance() {
         return HANDLER.instance();

@@ -132,6 +132,12 @@ public class MinecartVisualizerConfigScreen {
                                         .controller(TickBoxControllerBuilder::create)
                                         .build())
                                 .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.info_text_on_top"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.info_text_on_top.desc")))
+                                        .binding(true, () -> config.infoTextOnTop, v -> config.infoTextOnTop = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
                                         .name(Text.translatable("yacl.option.show_pos"))
                                         .binding(true, () -> config.enablePosTextDisplay, v -> config.enablePosTextDisplay = v)
                                         .controller(TickBoxControllerBuilder::create)
@@ -393,6 +399,57 @@ public class MinecartVisualizerConfigScreen {
                                         .controller(TickBoxControllerBuilder::create)
                                         .build())
                                 .build())
+
+                        .group(OptionGroup.createBuilder()
+                                .name(Text.translatable("yacl.group.collision"))
+                                .description(OptionDescription.of(Text.translatable("yacl.group.collision.desc")))
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.output_on_collision"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.output_on_collision.desc")))
+                                        .binding(false, () -> config.outputOnCollision, v -> config.outputOnCollision = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Float>createBuilder()
+                                        .name(Text.translatable("yacl.option.collision_threshold"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.collision_threshold.desc")))
+                                        .binding(0.02f, () -> config.collisionMomentumThreshold, v -> config.collisionMomentumThreshold = v)
+                                        .controller(opt -> FloatSliderControllerBuilder.create(opt)
+                                                .range(0.0f, 2.0f)
+                                                .step(0.01f))
+                                        .build())
+                                .option(Option.<Integer>createBuilder()
+                                        .name(Text.translatable("yacl.option.collision_cooldown"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.collision_cooldown.desc")))
+                                        .binding(10, () -> config.collisionMessageCooldown, v -> config.collisionMessageCooldown = v)
+                                        .controller(opt -> IntegerSliderControllerBuilder.create(opt)
+                                                .range(0, 100)
+                                                .step(1))
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.print_collision_position"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.print_collision_position.desc")))
+                                        .binding(true, () -> config.printCollisionPosition, v -> config.printCollisionPosition = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.print_collision_momentum"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.print_collision_momentum.desc")))
+                                        .binding(false, () -> config.printCollisionMomentum, v -> config.printCollisionMomentum = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.print_collision_speed_change"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.print_collision_speed_change.desc")))
+                                        .binding(false, () -> config.printCollisionSpeedChange, v -> config.printCollisionSpeedChange = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .option(Option.<Boolean>createBuilder()
+                                        .name(Text.translatable("yacl.option.print_collision_target"))
+                                        .description(OptionDescription.of(Text.translatable("yacl.option.print_collision_target.desc")))
+                                        .binding(true, () -> config.printCollisionTarget, v -> config.printCollisionTarget = v)
+                                        .controller(TickBoxControllerBuilder::create)
+                                        .build())
+                                .build())
                         .build())
                 .save(MinecartVisualizerConfig.HANDLER::save)
                 .build()
@@ -408,14 +465,6 @@ public class MinecartVisualizerConfigScreen {
                 .build();
     }
 
-    /**
-     * 创建一个带取色器的颜色选项。
-     *
-     * @param nameKey 语言键
-     * @param fallback 默认颜色，同时作为旧配置缺少该字段时的回退值
-     * @param getter  读取配置里的颜色
-     * @param setter  写回配置里的颜色
-     */
     private static Option<Color> createColorOption(String nameKey, Color fallback,
                                                    Function<MinecartVisualizerConfig, Color> getter,
                                                    BiConsumer<MinecartVisualizerConfig, Color> setter) {

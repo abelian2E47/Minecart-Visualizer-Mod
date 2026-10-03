@@ -1,7 +1,8 @@
     package com.minecartvisualizer.tracker;
 
     import com.minecartvisualizer.MinecartDataPayload;
-import com.minecartvisualizer.MinecartClientHandler;
+    import com.minecartvisualizer.MinecartClientHandler;
+    import com.minecartvisualizer.MinecartCollisionPayload;
     import com.minecartvisualizer.config.MinecartVisualizerConfig;
     import net.minecraft.client.network.ClientPlayerEntity;
     import net.minecraft.item.ItemStack;
@@ -11,6 +12,7 @@ import com.minecartvisualizer.MinecartClientHandler;
     import net.minecraft.text.MutableText;
     import net.minecraft.text.Text;
     import net.minecraft.util.Formatting;
+    import net.minecraft.util.Identifier;
     import net.minecraft.util.math.Vec3d;
 
     import java.util.*;
@@ -44,6 +46,8 @@ import com.minecartvisualizer.MinecartClientHandler;
         private List<ItemStack> preChangeInv = null;
         //开始连续吸取时坐标
         private Vec3d startPos = null;
+        //最近一次输出挤压消息时的服务端时间
+        private long lastCollisionMsgTime = -1L;
 
         public HopperMinecartTracker(TrackerColor trackerColor, UUID uuid, ClientPlayerEntity player, int id){
             this.id = id;
@@ -61,6 +65,7 @@ import com.minecartvisualizer.MinecartClientHandler;
 
         public void tick() {
             var config = MinecartVisualizerConfig.getInstance();
+            handleCollisions(config);
 
             //服务端明确通知销毁：这是唯一的"矿车被摧毁"判据
             MinecartClientHandler.RemovalNotice removal = MinecartClientHandler.consumeRemoval(uuid);
@@ -120,7 +125,6 @@ import com.minecartvisualizer.MinecartClientHandler;
             }
         }
 
-        /** 服务端通知矿车已被销毁：用服务端补发的最后一份数据出报告。 */
         private void handleRemoval(MinecartClientHandler.RemovalNotice removal, MinecartVisualizerConfig config) {
             MinecartDataPayload finalData = removal.data();
             if (finalData != null) {
@@ -145,6 +149,108 @@ import com.minecartvisualizer.MinecartClientHandler;
             TrackersManager.getCounter(trackerColor).recordTrackerRemoval((int) runTime);
 
             this.removed = true;
+        }
+
+        private void handleCollisions(MinecartVisualizerConfig config) {
+            if (!config.outputOnCollision) {
+                //关闭时也要把队列排空，否则重新打开会把关闭期间的历史事件一次性涌出来
+                while (MinecartClientHandler.pollCollision(uuid) != null) {
+                    //丢弃
+                }
+                return;
+            }
+
+            MinecartCollisionPayload collision;
+            while ((collision = MinecartClientHandler.pollCollision(uuid)) != null) {
+                if (collision.deltaMomentum() < config.collisionMomentumThreshold) continue;
+
+                long now = MinecartClientHandler.getLatestServerTime();
+                if (config.collisionMessageCooldown > 0
+                        && lastCollisionMsgTime >= 0
+                        && now - lastCollisionMsgTime < config.collisionMessageCooldown) {
+                    continue;
+                }
+                lastCollisionMsgTime = now;
+
+                sendCollisionMessage(collision, config);
+            }
+        }
+
+        //矿车被挤压（碰撞）消息：事件数据全部来自服务端，这里只负责挑选字段与排版
+        private void sendCollisionMessage(MinecartCollisionPayload collision, MinecartVisualizerConfig config) {
+            MutableText message = Text.literal("■ ").withColor(trackerColor.getHex())
+                    .append(Text.literal("[" + shortUuid + "] ").formatted(Formatting.GRAY))
+                    .append(Text.translatable("chat.minecartvisualizer.tracker.squeezed").formatted(Formatting.GOLD));
+
+            if (config.printCollisionTarget) {
+                MutableText target = Text.empty();
+                if (collision.blockTarget()) {
+                    target.append(Text.translatable("chat.minecartvisualizer.tracker.squeezed.block",
+                            blockDisplayName(collision.targetId())));
+                } else {
+                    target.append(Text.translatable("chat.minecartvisualizer.tracker.squeezed.entity",
+                            entityDisplayName(collision)));
+                }
+                message.append(Text.literal(" ")).append(target.formatted(Formatting.YELLOW));
+            }
+
+            if (config.printCollisionPosition) {
+                Vec3d pos = collision.pos();
+                String posStr = String.format("%.1f %.1f %.1f", pos.x, pos.y, pos.z);
+
+                MutableText posText = Text.literal("\n  ").append(Text.translatable(
+                        "chat.minecartvisualizer.tracker.squeezed.position",
+                        String.format("(%.1f, %.1f, %.1f)", pos.x, pos.y, pos.z)));
+
+                posText.formatted(Formatting.DARK_AQUA).styled(style -> style
+                        .withClickEvent(new ClickEvent.SuggestCommand("/tp @s " + posStr))
+                        .withHoverEvent(new HoverEvent.ShowText(
+                                Text.translatable("chat.minecartvisualizer.tracker.tp_hover"))));
+
+                message.append(posText);
+            }
+
+            Vec3d deltaVelocity = collision.deltaVelocity();
+            if (config.printCollisionMomentum) {
+                message.append(Text.literal("\n  ").append(Text.translatable(
+                        "chat.minecartvisualizer.tracker.squeezed.momentum",
+                        String.format("%.3f", deltaVelocity.length()),
+                        String.format("(%.3f, %.3f, %.3f)",
+                                deltaVelocity.x, deltaVelocity.y, deltaVelocity.z)
+                ).formatted(Formatting.WHITE)));
+            }
+
+            if (config.printCollisionSpeedChange) {
+                message.append(Text.literal("\n  ").append(Text.translatable(
+                        "chat.minecartvisualizer.tracker.squeezed.speed",
+                        String.format("%.3f", collision.speedBefore()),
+                        String.format("%.3f", collision.speedAfter()),
+                        String.format("%+.3f", collision.deltaSpeed())
+                ).formatted(Formatting.WHITE)));
+            }
+
+            player.sendMessage(message, false);
+        }
+
+        private Text blockDisplayName(String targetId) {
+            Identifier id = Identifier.tryParse(targetId);
+            if (id != null && Registries.BLOCK.containsId(id)) {
+                return Registries.BLOCK.get(id).getName();
+            }
+            return Text.literal(targetId);
+        }
+
+        private Text entityDisplayName(MinecartCollisionPayload collision) {
+            Identifier id = Identifier.tryParse(collision.targetId());
+            Text base = (id != null && Registries.ENTITY_TYPE.containsId(id))
+                    ? Registries.ENTITY_TYPE.get(id).getName()
+                    : Text.literal(collision.targetId());
+
+            String customName = collision.targetCustomName();
+            if (customName != null && !customName.isEmpty()) {
+                return Text.empty().append(base).append(Text.literal(" (" + customName + ")"));
+            }
+            return base;
         }
 
         private boolean hasInventoryChanged(List<ItemStack> currentInv) {
@@ -352,7 +458,6 @@ import com.minecartvisualizer.MinecartClientHandler;
             startPos = null;
         }
 
-
         private List<ItemStack> copyInventory(List<ItemStack> original) {
             List<ItemStack> copy = new ArrayList<>(original.size());
             for (ItemStack stack : original) {
@@ -374,7 +479,6 @@ import com.minecartvisualizer.MinecartClientHandler;
 
             return true;
         }
-
 
         public TrackerColor getTrackerColor(){
             return trackerColor;
