@@ -7,7 +7,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
 @Mixin(ClientWorld.class)
-public interface    ClientWorldAccessor {
+public interface ClientWorldAccessor {
     @Accessor("entityManager")
     ClientEntityManager<Entity> getEntityManager();
 }

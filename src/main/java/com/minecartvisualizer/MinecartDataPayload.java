@@ -26,7 +26,7 @@ import java.util.UUID;
 public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double speed, float yaw, int id,
                                   long serverTime, boolean removed) implements CustomPayload {
 
-    public static final Id<MinecartDataPayload> ID = new CustomPayload.Id<>(Minecartvisualizer.MINECART_DATA_PACKET_ID);
+    public static final Id<MinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.MINECART_DATA_PACKET_ID);
 
     public static final PacketCodec<ByteBuf, Vec3d> VEC3D_CODEC = PacketCodec.of(
             (value, buf) -> {

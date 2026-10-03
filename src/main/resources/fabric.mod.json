@@ -11,12 +11,12 @@
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/Ay2E47/Minecart-Visualizer-Mod"
 	},
-	"license": "MIT",
+	"license": "CC0-1.0",
 	"icon": "assets/minecartvisualizer/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-          "com.minecartvisualizer.Minecartvisualizer"
+			"com.minecartvisualizer.MinecartVisualizer"
 		],
 		"client": [
 			"com.minecartvisualizer.MinecartVisualizerClient"
@@ -27,11 +27,14 @@
 	},
 	"mixins": [
 		"minecartvisualizer.mixins.json",
-		"minecartvisualizer.client.mixins.json"
+		{
+			"config": "minecartvisualizer.client.mixins.json",
+			"environment": "client"
+		}
 	],
 	"depends": {
 		"fabricloader": ">=0.18.4",
-		"minecraft": "1.21.11",
+		"minecraft": "1.21.1",
 		"java": ">=21",
 		"fabric-api": "*"
 	},

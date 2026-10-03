@@ -85,8 +85,8 @@ public class TrackersManager {
             TrackerCounter counter = entry.getValue();
 
             //检查开关状态。
-            //注意这里不再要求 isActive()：isActive() 表示"当前物品栏里有东西"，
-            //用它当计时门槛会让运行时长从第一次装到物品才开始算，/h 速率被整体放大。
+            //注意这里不再要求 isActive()：isActive() 表示"当前统计里有数据"，
+            //用它当计时门槛会让运行时长从第一次记录才开始算，/h 速率被整体放大。
             //运行时长应该从计数器启用那一刻开始按服务端 tick 累积。
             if (counter.isEnable()) {
                 counter.tick();
@@ -99,17 +99,6 @@ public class TrackersManager {
             tracker.tick();
             return tracker.isRemoved();
         });
-    }
-
-    public static void clearAll() {
-        trackers.clear();
-        for (TrackerCounter counter : counters.values()) {
-            counter.reset();
-        }
-        for (TrackerFilter filter : filters.values()) {
-            filter.clearWhiteList();
-            filter.clearBlackList();
-        }
     }
 
 

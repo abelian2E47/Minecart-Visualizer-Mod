@@ -24,7 +24,7 @@ public abstract class EntityRemovalMixin {
     @Inject(method = "remove(Lnet/minecraft/entity/Entity$RemovalReason;)V", at = @At("HEAD"))
     private void minecartvisualizer$sendRemovalNotice(Entity.RemovalReason reason, CallbackInfo ci) {
         Entity self = (Entity) (Object) this;
-        if (self.getEntityWorld().isClient()) return;
+        if (self.getWorld().isClient()) return;
         if (!(self instanceof AbstractMinecartEntity cart)) return;
 
         if (reason == Entity.RemovalReason.KILLED || reason == Entity.RemovalReason.DISCARDED) {

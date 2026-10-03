@@ -32,6 +32,6 @@ public class MinecartVisualizerUtils {
 
         Direction dir = Direction.getFacing(velocity.x, 0, velocity.z);
 
-        return dir.toString();
+        return dir.getName();
     }
 }

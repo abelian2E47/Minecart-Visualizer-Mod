@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 public record TNTMinecartDataPayload(UUID uuid, int fuseTicks, boolean isExploded, Vec3d explosionPos, Float damageWobbleStrength) implements CustomPayload {
-    public static final Id<TNTMinecartDataPayload> ID = new CustomPayload.Id<>(Minecartvisualizer.TNT_MINECART_DATA_PACKET_ID);
+    public static final Id<TNTMinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID);
 
     @Override
     public Id<? extends CustomPayload> getId() { return ID; }
