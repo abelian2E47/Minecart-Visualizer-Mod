@@ -3,8 +3,9 @@
   "package": "com.minecartvisualizer.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AbstractMinecartEntityRendererMixin",
     "ClientWorldAccessor",
-    "EntityRendererMixin",
+    "RenderLayersMixin",
     "WorldRenderMixin"
   ],
   "injectors": {

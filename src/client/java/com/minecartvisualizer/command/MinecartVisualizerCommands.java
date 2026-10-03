@@ -2,7 +2,6 @@ package com.minecartvisualizer.command;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.*;
 import com.mojang.brigadier.arguments.BoolArgumentType;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;

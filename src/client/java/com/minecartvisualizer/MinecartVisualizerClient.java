@@ -6,8 +6,6 @@ import com.minecartvisualizer.config.MinecartVisualizerConfigScreen;
 import com.minecartvisualizer.tracker.TrackerColor;
 import com.minecartvisualizer.tracker.TrackersManager;
 import net.fabricmc.api.ClientModInitializer;
-import com.minecartvisualizer.tracker.TrackerPointsManager;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -36,12 +34,6 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 			MinecartVisualizerConfig.HANDLER.save();
 		});
 
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-			MinecartClientHandler.clearAll();
-			TrackersManager.clearAll();
-			TrackerPointsManager.getInstance().clearAllPoints();
-		});
-
 		MinecartClientHandler.register();
 		MinecartVisualizerCommands.registerCommands();
 
@@ -49,16 +41,17 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 				"key.minecartvisualizer.config_main",
 				InputUtil.Type.KEYSYM,
 				GLFW.GLFW_KEY_C,
-				KeyBinding.Category.DEBUG
+				"category.minecartvisualizer.title"
 		));
 
 		subConfigKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
 				"key.minecartvisualizer.config_sub",
 				InputUtil.Type.KEYSYM,
 				GLFW.GLFW_KEY_V,
-				KeyBinding.Category.DEBUG
+				"category.minecartvisualizer.title"
 		));
 
+		//配置界面快捷键
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.player == null) return;
 
@@ -75,7 +68,8 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 				}
 			} else {
 				while (subConfigKey.wasPressed()) {
-					if (InputUtil.isKeyPressed(client.getWindow(), mainKey.getCode())) {
+					long windowHandle = client.getWindow().getHandle();
+					if (InputUtil.isKeyPressed(windowHandle, mainKey.getCode())) {
 						client.setScreen(MinecartVisualizerConfigScreen.create(client.currentScreen));
 					}
 				}
@@ -84,7 +78,7 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 
 		//漏斗矿车追踪器
 		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-			if (world.isClient() && entity instanceof net.minecraft.entity.vehicle.HopperMinecartEntity minecart && MinecartVisualizerConfig.getInstance().trackingByDye) {
+			if (world.isClient && entity instanceof net.minecraft.entity.vehicle.HopperMinecartEntity minecart && MinecartVisualizerConfig.getInstance().trackingByDye) {
 				ItemStack stack = player.getStackInHand(hand);
 
 				if (stack.getItem() instanceof DyeItem dyeItem) {

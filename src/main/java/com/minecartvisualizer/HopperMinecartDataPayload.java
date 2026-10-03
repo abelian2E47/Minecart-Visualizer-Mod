@@ -26,7 +26,7 @@ import java.util.UUID;
 public record HopperMinecartDataPayload(UUID uuid, boolean enable, List<ItemStack> items,
                                         Optional<BlockPos> extractionBlock,
                                         List<Box> extractionEntities) implements CustomPayload {
-    public static final Id<HopperMinecartDataPayload> ID = new CustomPayload.Id<>(Minecartvisualizer.HOPPER_MINECART_DATA_PACKET_ID);
+    public static final Id<HopperMinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.HOPPER_MINECART_DATA_PACKET_ID);
 
     /** 兼容旧构造调用：只带物品栏（不携带吸取目标）。 */
     public HopperMinecartDataPayload(UUID uuid, boolean enable, List<ItemStack> items) {
