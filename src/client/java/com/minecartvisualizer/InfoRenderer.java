@@ -4,72 +4,82 @@ import com.minecartvisualizer.config.Colors;
 import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.HopperMinecartTracker;
 import com.minecartvisualizer.tracker.TrackerColor;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.InventoryProvider;
-import net.minecraft.block.entity.Hopper;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.item.ItemModelManager;
-import net.minecraft.client.render.*;
-import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.client.render.item.ItemRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.BlockItem;
-import net.minecraft.item.ItemDisplayContext;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.MutableText;
-import net.minecraft.util.math.*;
-import net.minecraft.util.shape.VoxelShape;
-import net.minecraft.util.shape.VoxelShapes;
-import net.minecraft.world.World;
-import net.minecraft.client.render.RenderLayers;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.item.ItemModelResolver;
+import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemDisplayContext;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.Hopper;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.*;
 
-
 public class InfoRenderer {
 
-    public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer, int textColor) {
-        TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
-        Matrix4f matrix4f = buildTextPose(entity, matrices);
+    public static void renderTexts(List<MutableComponent> infoTexts, Entity entity, PoseStack matrices, SubmitNodeCollector collector, int textColor) {
+        Font textRenderer = Minecraft.getInstance().font;
+        PoseStack pose = poseOf(buildTextPose(entity, matrices));
         float startY = -(infoTexts.size() * 10);
-        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, true, textColor);
-        renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, false, textColor);
+        renderTextLayer(infoTexts, textRenderer, pose, collector, startY, true, textColor);
+        renderTextLayer(infoTexts, textRenderer, pose, collector, startY, false, textColor);
     }
 
-    /**
-     * 计算悬浮信息文本的最终姿态（相机相对坐标）。抽出来是为了让"置顶渲染"能在置顶阶段复用同一套变换，
-     * 保证文本在两种渲染方式下的位置、朝向完全一致。
-     */
-    private static Matrix4f buildTextPose(Entity entity, MatrixStack matrices) {
+    private static Matrix4f buildTextPose(Entity entity, PoseStack matrices) {
         var config = MinecartVisualizerConfig.getInstance();
-        float baseHeight = entity.getHeight() + 0.5f;
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
-        matrices.push();
+        float baseHeight = entity.getBbHeight() + 0.5f;
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+        matrices.pushPose();
         matrices.translate(0.0, baseHeight, 0.0);
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-camera.getYaw() + 180));
+        matrices.mulPose(Axis.YP.rotationDegrees(-camera.yRot() + 180));
         if (config.alwaysFacingThePlayer) {
-            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-camera.getPitch()));
+            matrices.mulPose(Axis.XP.rotationDegrees(-camera.xRot()));
         }
         matrices.scale(0.03f, -0.03f, 0.03f);
-        Matrix4f pose = new Matrix4f(matrices.peek().getPositionMatrix());
-        matrices.pop();
+        Matrix4f pose = new Matrix4f(matrices.last().pose());
+        matrices.popPose();
         return pose;
     }
 
-    private static void renderTextLayer(List<MutableText> texts, TextRenderer renderer, Matrix4f matrix, VertexConsumerProvider vc, float y, boolean isBackground, int textColor) {
+    private static PoseStack poseOf(Matrix4f matrix) {
+        PoseStack stack = new PoseStack();
+        stack.mulPose(matrix);
+        return stack;
+    }
+
+    private static void renderTextLayer(List<MutableComponent> texts, Font renderer, PoseStack matrices, SubmitNodeCollector collector,
+                                        float y, boolean isBackground, int textColor) {
         float currentY = y;
-        for (MutableText text : texts) {
-            float x = -renderer.getWidth(text) / 2f;
+        for (MutableComponent text : texts) {
+            float x = -renderer.width(text) / 2f;
             if (isBackground) {
                 int backgroundColor = (textColor & 0xFFFFFF) | 0x4C000000;
-                renderer.draw(text, x, currentY, backgroundColor, false, matrix, vc, TextRenderer.TextLayerType.SEE_THROUGH, 0x4CC8C8C8, 0xF000F0);
+                collector.submitText(matrices, x, currentY, text.getVisualOrderText(), false,
+                        Font.DisplayMode.SEE_THROUGH, 0xF000F0, backgroundColor, 0x4CC8C8C8, 0);
             } else {
-                renderer.draw(text, x, currentY, textColor, false, matrix, vc, TextRenderer.TextLayerType.NORMAL, 0, 0xF000F0);
+                collector.submitText(matrices, x, currentY, text.getVisualOrderText(), false,
+                        Font.DisplayMode.NORMAL, 0xF000F0, textColor, 0, 0);
             }
             currentY += 10;
         }
@@ -80,40 +90,33 @@ public class InfoRenderer {
     private static final List<QueuedWorldBox> queuedWorldBoxes = new ArrayList<>();
     private static final List<QueuedInfoTexts> queuedInfoTexts = new ArrayList<>();
 
-    /**
-     * 悬浮信息文本的置顶路径：开关开启时不直接画，而是连同当前姿态入队，
-     * 由置顶阶段（清空深度之后）统一绘制，从而无视方块遮挡。
-     */
-    public static void queueInfoTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, int textColor) {
+    public static void queueInfoTexts(List<MutableComponent> infoTexts, Entity entity, PoseStack matrices, int textColor) {
         if (infoTexts.isEmpty()) {
             return;
         }
         queuedInfoTexts.add(new QueuedInfoTexts(List.copyOf(infoTexts), buildTextPose(entity, matrices), textColor));
     }
 
-    public static void renderQueuedInfoTexts() {
+    public static void renderQueuedInfoTexts(SubmitNodeCollector collector) {
         if (queuedInfoTexts.isEmpty()) {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        TextRenderer textRenderer = client.textRenderer;
-        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
+        Font textRenderer = Minecraft.getInstance().font;
 
         try {
             for (QueuedInfoTexts queued : queuedInfoTexts) {
+                PoseStack pose = poseOf(queued.pose());
                 float startY = -(queued.texts().size() * 10);
-                renderTextLayer(queued.texts(), textRenderer, queued.pose(), vertexConsumers, startY, true, queued.textColor());
-                renderTextLayer(queued.texts(), textRenderer, queued.pose(), vertexConsumers, startY, false, queued.textColor());
+                renderTextLayer(queued.texts(), textRenderer, pose, collector, startY, true, queued.textColor());
+                renderTextLayer(queued.texts(), textRenderer, pose, collector, startY, false, queued.textColor());
             }
-
-            vertexConsumers.draw();
         } finally {
             queuedInfoTexts.clear();
         }
     }
 
-    public static void queueInventory(List<ItemStack> items, World world,
+    public static void queueInventory(List<ItemStack> items, Level world,
                                       double lerpedX, double lerpedY, double lerpedZ,
                                       int totalSlots, int cols, boolean isLocked) {
         if (totalSlots > 0) {
@@ -133,129 +136,113 @@ public class InfoRenderer {
                 || !queuedInfoTexts.isEmpty();
     }
 
-    public static void renderQueuedInventories() {
+    public static void renderQueuedInventories(SubmitNodeCollector collector) {
         if (queuedInventories.isEmpty()) {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
-        MatrixStack matrices = new MatrixStack();
-        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
-        OrderedRenderCommandQueue itemRenderQueue = client.gameRenderer.getEntityRenderCommandQueue();
+        Minecraft client = Minecraft.getInstance();
+        Vec3 cameraPos = client.gameRenderer.mainCamera().position();
+        PoseStack matrices = new PoseStack();
 
         try {
             for (QueuedInventory inventory : queuedInventories) {
-                renderInventory(inventory, cameraPos, matrices, vertexConsumers, itemRenderQueue);
+                renderInventory(inventory, cameraPos, matrices, collector);
             }
-
-            client.gameRenderer.getEntityRenderDispatcher().render();
-            vertexConsumers.draw();
         } finally {
             queuedInventories.clear();
         }
 
     }
-    public static boolean renderQueuedExtractionTargets() {
+    public static boolean renderQueuedExtractionTargets(SubmitNodeCollector collector) {
         if (queuedExtractionTargets.isEmpty()) {
             return false;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
-        MatrixStack matrices = new MatrixStack();
-        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
-        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
+        Minecraft client = Minecraft.getInstance();
+        Vec3 cameraPos = client.gameRenderer.mainCamera().position();
+        PoseStack matrices = new PoseStack();
 
         float[] color = Colors.rgbFloats(MinecartVisualizerConfig.getInstance().extractionTargetColor, MinecartVisualizerConfig.DEFAULT_EXTRACTION_TARGET_COLOR.getRGB());
-        int argb = ColorHelper.getArgb(255, (int) (color[0] * 255), (int) (color[1] * 255), (int) (color[2] * 255));
+        int argb = ARGB.color(255, (int) (color[0] * 255), (int) (color[1] * 255), (int) (color[2] * 255));
         for (QueuedExtractionTarget target : queuedExtractionTargets) {
-            drawScaledOutline(matrices, lines, target.shape(),
+            drawScaledOutline(matrices, collector, target.shape(),
                     target.origin().x - cameraPos.x, target.origin().y - cameraPos.y, target.origin().z - cameraPos.z,
                     target.scale(), argb);
         }
 
-        vertexConsumers.draw();
         queuedExtractionTargets.clear();
 
         return true;
     }
 
-    public static void renderQueuedWorldBoxes() {
+    public static void renderQueuedWorldBoxes(SubmitNodeCollector collector) {
         if (queuedWorldBoxes.isEmpty()) {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
-        MatrixStack matrices = new MatrixStack();
-        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
-        VertexConsumer lines = vertexConsumers.getBuffer(RenderLayers.LINES);
+        Minecraft client = Minecraft.getInstance();
+        Vec3 cameraPos = client.gameRenderer.mainCamera().position();
+        PoseStack matrices = new PoseStack();
 
         for (QueuedWorldBox queued : queuedWorldBoxes) {
-            Box viewBox = queued.box().offset(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-            drawScaledBox(matrices, lines, viewBox, queued.scale(),
+            AABB viewBox = queued.box().move(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+            drawScaledBox(matrices, collector, viewBox, queued.scale(),
                     queued.color()[0], queued.color()[1], queued.color()[2], 1.0f);
         }
 
-        vertexConsumers.draw();
         queuedWorldBoxes.clear();
     }
 
-    private static void renderInventory(QueuedInventory inventory, Vec3d cameraPos,
-                                        MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers,
-                                        OrderedRenderCommandQueue itemRenderQueue) {
+    private static void renderInventory(QueuedInventory inventory, Vec3 cameraPos,
+                                        PoseStack matrices, SubmitNodeCollector collector) {
         var config = MinecartVisualizerConfig.getInstance();
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
-        matrices.push();
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
+        matrices.pushPose();
         matrices.translate(inventory.lerpedX() - cameraPos.x, inventory.lerpedY() + 0.4 - cameraPos.y, inventory.lerpedZ() - cameraPos.z);
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-camera.getYaw() + 180));
+        matrices.mulPose(Axis.YP.rotationDegrees(-camera.yRot() + 180));
         if (config.alwaysFacingThePlayer) {
-            matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-camera.getPitch()));
+            matrices.mulPose(Axis.XP.rotationDegrees(-camera.xRot()));
         }
 
         for (int i = 0; i < inventory.totalSlots(); i++) {
             int row = i / inventory.cols();
             int col = i % inventory.cols();
-            renderSlotBackground(row, col, inventory.cols(), matrices, vertexConsumers, inventory.isLocked(), config.inventorySlotSize);
+            renderSlotBackground(row, col, inventory.cols(), matrices, collector, inventory.isLocked(), config.inventorySlotSize);
         }
-        vertexConsumers.drawCurrentLayer();
 
         for (int i = 0; i < inventory.items().size(); i++) {
             ItemStack item = inventory.items().get(i);
             if (item.isEmpty()) continue;
             int row = i / inventory.cols();
             int col = i % inventory.cols();
-            renderSlotItem(item, row, col, inventory.cols(), matrices, vertexConsumers, itemRenderQueue, inventory.world(), config.enableItemStackCountDisplay, config.inventorySlotSize, config.inventoryItemSize);
+            renderSlotItem(item, row, col, inventory.cols(), matrices, collector, inventory.world(), config.enableItemStackCountDisplay, config.inventorySlotSize, config.inventoryItemSize);
         }
-        matrices.pop();
+        matrices.popPose();
     }
 
-    private record QueuedInventory(List<ItemStack> items, World world,
+    private record QueuedInventory(List<ItemStack> items, Level world,
                                    double lerpedX, double lerpedY, double lerpedZ,
                                    int totalSlots, int cols, boolean isLocked) {
     }
 
-    private record QueuedExtractionTarget(VoxelShape shape, Vec3d origin, float scale) {
+    private record QueuedExtractionTarget(VoxelShape shape, Vec3 origin, float scale) {
     }
 
-    private record QueuedWorldBox(Box box, float scale, float[] color) {
+    private record QueuedWorldBox(AABB box, float scale, float[] color) {
     }
 
-    private record QueuedInfoTexts(List<MutableText> texts, Matrix4f pose, int textColor) {
+    private record QueuedInfoTexts(List<MutableComponent> texts, Matrix4f pose, int textColor) {
     }
 
     private static void renderSlotBackground(int row, int col, int cols,
-                                             MatrixStack matrices, VertexConsumerProvider vertexConsumers,
+                                             PoseStack matrices, SubmitNodeCollector collector,
                                              boolean isLocked, float slotSize) {
         var config = MinecartVisualizerConfig.getInstance();
-        matrices.push();
+        matrices.pushPose();
         double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
         double yOffset = row * 0.5 * slotSize + 1;
         matrices.translate(xOffset, yOffset, 0.0);
-
-        VertexConsumer buffer = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_BACKGROUND);
-        Matrix4f matrix = matrices.peek().getPositionMatrix();
 
         boolean changeColor = isLocked && config.enableHopperMinecartEnableDisplay;
 
@@ -268,36 +255,36 @@ public class InfoRenderer {
                 changeColor ? MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_LOCKED_COLOR.getRGB()
                         : MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_COLOR.getRGB());
 
-        drawRect(matrix, buffer, 0.19f * slotSize, -0.06f * slotSize,
-                background[0], background[1], background[2], 0.25f);//背景
-        drawRect(matrix, buffer, 0.22f * slotSize, -0.08f * slotSize,
-                border[0], border[1], border[2], 0.8f);//边框
-        matrices.pop();
+        collector.submitCustomGeometry(matrices, CustomRenderLayers.CUSTOM_BACKGROUND, (pose, buffer) -> {
+            drawRect(pose.pose(), buffer, 0.19f * slotSize, -0.06f * slotSize,
+                    background[0], background[1], background[2], 0.25f);//背景
+            drawRect(pose.pose(), buffer, 0.22f * slotSize, -0.08f * slotSize,
+                    border[0], border[1], border[2], 0.8f);//边框
+        });
+        matrices.popPose();
     }
 
     private static void renderSlotItem(ItemStack item, int row, int col, int cols,
-                                       MatrixStack matrices, VertexConsumerProvider vertexConsumers,
-                                       OrderedRenderCommandQueue itemRenderQueue, World world,
+                                       PoseStack matrices, SubmitNodeCollector collector, Level world,
                                        boolean enableCount, float slotSize, float itemSize) {
-        TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
-        ItemModelManager itemModelManager = MinecraftClient.getInstance().getItemModelManager();
+        Font textRenderer = Minecraft.getInstance().font;
+        ItemModelResolver itemModelManager = Minecraft.getInstance().getItemModelResolver();
 
-        matrices.push();
+        matrices.pushPose();
         double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
         double yOffset = row * 0.5 * slotSize + 1;
         matrices.translate(xOffset, yOffset, 0.0);
 
-        matrices.push();
+        matrices.pushPose();
         if (item.getItem() instanceof BlockItem) {
             matrices.scale(0.53f * itemSize, 0.53f * itemSize, 0.53f * itemSize);
         } else {
             matrices.scale(0.4f * itemSize, 0.4f * itemSize, 0.4f * itemSize);
         }
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180));
+        matrices.mulPose(Axis.YP.rotationDegrees(180));
 
-
-        ItemRenderState renderState = new ItemRenderState();
-        itemModelManager.clearAndUpdate(
+        ItemStackRenderState renderState = new ItemStackRenderState();
+        itemModelManager.updateForTopItem(
                 renderState,
                 item,
                 ItemDisplayContext.FIXED,
@@ -307,54 +294,52 @@ public class InfoRenderer {
         );
 
         if (!renderState.isEmpty()) {
-            renderState.render(matrices, itemRenderQueue, 15728880, OverlayTexture.DEFAULT_UV, 0);
+            renderState.submit(matrices, collector, 15728880, OverlayTexture.NO_OVERLAY, 0);
         }
-        matrices.pop();
+        matrices.popPose();
 
         if (enableCount && item.getCount() > 1) {
             String countString = String.valueOf(item.getCount());
-            matrices.push();
+            matrices.pushPose();
             matrices.translate(0.12 * slotSize, -0.1 * slotSize, 0.1);
             matrices.scale(0.02f * itemSize, -0.02f * itemSize, 0.02f * itemSize);
 
-            textRenderer.draw(countString, 0.0f, 0.0f,
-                    Colors.rgb(MinecartVisualizerConfig.getInstance().itemCountTextColor, MinecartVisualizerConfig.DEFAULT_ITEM_COUNT_TEXT_COLOR.getRGB()) | 0xFF000000, false,
-                    matrices.peek().getPositionMatrix(), vertexConsumers,
-                    TextRenderer.TextLayerType.SEE_THROUGH, 0, 15728880);
-            matrices.pop();
+            collector.submitText(matrices, 0.0f, 0.0f,
+                    FormattedCharSequence.forward(countString, Style.EMPTY), false, Font.DisplayMode.SEE_THROUGH, 15728880,
+                    Colors.rgb(MinecartVisualizerConfig.getInstance().itemCountTextColor, MinecartVisualizerConfig.DEFAULT_ITEM_COUNT_TEXT_COLOR.getRGB()) | 0xFF000000,
+                    0, 0);
+            matrices.popPose();
         }
 
-        matrices.pop();
+        matrices.popPose();
     }
 
-
-    public static Box[] buildHopperRangeBoxes(Entity entity, Vec3d hopperPos) {
-        Box pickupBox = entity.getBoundingBox().offset(
+    public static AABB[] buildHopperRangeBoxes(Entity entity, Vec3 hopperPos) {
+        AABB pickupBox = entity.getBoundingBox().move(
                 hopperPos.x - entity.getX(), hopperPos.y - entity.getY(), hopperPos.z - entity.getZ()
-        ).expand(0.25, 0.0, 0.25);
+        ).inflate(0.25, 0.0, 0.25);
 
-        Box inputAreaBox = Hopper.INPUT_AREA_SHAPE.offset(
+        AABB inputAreaBox = Hopper.SUCK_AABB.move(
                 hopperPos.x - 0.5, hopperPos.y, hopperPos.z - 0.5);
 
-        return new Box[]{pickupBox, inputAreaBox};
+        return new AABB[]{pickupBox, inputAreaBox};
     }
 
-
-    public static void renderHopperRanges(Entity entity, Vec3d hopperPos, double cameraX, double cameraY, double cameraZ,
-                                          VertexConsumerProvider vertexConsumers,
+    public static void renderHopperRanges(Entity entity, Vec3 hopperPos, double cameraX, double cameraY, double cameraZ,
+                                          SubmitNodeCollector collector,
                                           float[] pickupColor, float[] extractionColor, float scale) {
-        VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.CUSTOM_LINES);
-        Box[] boxes = buildHopperRangeBoxes(entity, hopperPos);
-        MatrixStack matrices = new MatrixStack();
+        AABB[] boxes = buildHopperRangeBoxes(entity, hopperPos);
+        PoseStack matrices = new PoseStack();
 
-        drawScaledBox(matrices, lines, boxes[0].offset(-cameraX, -cameraY, -cameraZ), scale,
-                pickupColor[0], pickupColor[1], pickupColor[2], 0.8f);
-        drawScaledBox(matrices, lines, boxes[1].offset(-cameraX, -cameraY, -cameraZ), scale,
-                extractionColor[0], extractionColor[1], extractionColor[2], 0.8f);
+        for (int i = 0; i < boxes.length; i++) {
+            float[] color = i == 0 ? pickupColor : extractionColor;
+            AABB viewBox = boxes[i].move(-cameraX, -cameraY, -cameraZ);
+            drawScaledBox(matrices, collector, viewBox, scale, color[0], color[1], color[2], 0.8f);
+        }
     }
 
     //吸取范围框加入置顶渲染队列
-    public static void queueWorldBox(Box box, float scale, float[] color) {
+    public static void queueWorldBox(AABB box, float scale, float[] color) {
         queuedWorldBoxes.add(new QueuedWorldBox(box, scale, color));
     }
 
@@ -363,58 +348,59 @@ public class InfoRenderer {
             return false;
         }
 
-        World world = MinecraftClient.getInstance().world;
+        Level world = Minecraft.getInstance().level;
         boolean hasTarget = false;
 
         Optional<BlockPos> extractionBlock = hopperData.extractionBlock();
         if (extractionBlock.isPresent() && world != null) {
             BlockPos targetPos = extractionBlock.get();
             BlockState state = world.getBlockState(targetPos);
-            VoxelShape shape = state.getOutlineShape(world, targetPos);
+            VoxelShape shape = state.getShape(world, targetPos);
             if (shape.isEmpty()) {
                 shape = state.getCollisionShape(world, targetPos);
             }
 
             if (!shape.isEmpty()) {
                 queuedExtractionTargets.add(new QueuedExtractionTarget(
-                        shape, new Vec3d(targetPos.getX(), targetPos.getY(), targetPos.getZ()), scale));
+                        shape, new Vec3(targetPos.getX(), targetPos.getY(), targetPos.getZ()), scale));
                 hasTarget = true;
             }
         }
 
-        for (Box extractionBox : hopperData.extractionEntities()) {
+        for (AABB extractionBox : hopperData.extractionEntities()) {
             queuedExtractionTargets.add(new QueuedExtractionTarget(
-                    VoxelShapes.cuboid(extractionBox), Vec3d.ZERO, scale));
+                    Shapes.create(extractionBox), Vec3.ZERO, scale));
             hasTarget = true;
         }
 
         return hasTarget;
     }
 
-    private static void drawScaledOutline(MatrixStack matrices, VertexConsumer lines, VoxelShape shape,
+    private static void drawScaledOutline(PoseStack matrices, SubmitNodeCollector collector, VoxelShape shape,
                                           double offsetX, double offsetY, double offsetZ,
                                           float scale, int argb) {
         if (shape.isEmpty()) {
             return;
         }
 
-        Box bounds = shape.getBoundingBox();
+        AABB bounds = shape.bounds();
         double centerX = offsetX + (bounds.minX + bounds.maxX) / 2.0;
         double centerY = offsetY + (bounds.minY + bounds.maxY) / 2.0;
         double centerZ = offsetZ + (bounds.minZ + bounds.maxZ) / 2.0;
 
-        matrices.push();
+        matrices.pushPose();
         matrices.translate(centerX, centerY, centerZ);
         matrices.scale(scale, scale, scale);
         matrices.translate(-centerX, -centerY, -centerZ);
+        matrices.translate(offsetX, offsetY, offsetZ);
 
-        VertexRendering.drawOutline(matrices, lines, shape, offsetX, offsetY, offsetZ, argb, 2.0f);
+        collector.submitShapeOutline(matrices, shape, CustomRenderLayers.CUSTOM_LINES, argb, 2.0f, false);
 
-        matrices.pop();
+        matrices.popPose();
     }
 
-    private static void drawScaledBox(MatrixStack matrices, VertexConsumer lines, Box viewBox, float scale, float r, float g, float b, float a) {
-        matrices.push();
+    private static void drawScaledBox(PoseStack matrices, SubmitNodeCollector collector, AABB viewBox, float scale, float r, float g, float b, float a) {
+        matrices.pushPose();
 
         double centerX = (viewBox.minX + viewBox.maxX) / 2.0;
         double centerY = (viewBox.minY + viewBox.maxY) / 2.0;
@@ -423,18 +409,18 @@ public class InfoRenderer {
         matrices.translate(centerX, centerY, centerZ);
         matrices.scale(scale, scale, scale);
 
-        Box centeredBox = new Box(
+        AABB centeredBox = new AABB(
                 viewBox.minX - centerX, viewBox.minY - centerY, viewBox.minZ - centerZ,
                 viewBox.maxX - centerX, viewBox.maxY - centerY, viewBox.maxZ - centerZ
         );
 
-        drawBox(matrices, lines, centeredBox, r, g, b, a);
+        drawBox(matrices, collector, centeredBox, r, g, b, a);
 
-        matrices.pop();
+        matrices.popPose();
     }
 
     public static void renderTrail(HopperMinecartTracker tracker,
-                                   MatrixStack matrices, VertexConsumer lineConsumer) {
+                                   PoseStack matrices, SubmitNodeCollector collector) {
         var config = MinecartVisualizerConfig.getInstance();
 
         float r, g, b;
@@ -448,32 +434,32 @@ public class InfoRenderer {
             r = rgb[0]; g = rgb[1]; b = rgb[2];
         }
 
-        renderTrail(tracker.getTrailPoints(), matrices, lineConsumer, r, g, b);
+        renderTrail(tracker.getTrailPoints(), matrices, collector, r, g, b);
     }
 
-    public static void renderTrail(Collection<Vec3d> points,
-                                   MatrixStack matrices, VertexConsumer lineConsumer,
+    public static void renderTrail(Collection<Vec3> points,
+                                   PoseStack matrices, SubmitNodeCollector collector,
                                    float r, float g, float b) {
         if (points.size() < 2) return;
 
-        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
+        collector.submitCustomGeometry(matrices, CustomRenderLayers.CUSTOM_LINES, (pose, lineConsumer) -> {
+            Vec3 yOffset = new Vec3(0, 0.5, 0);
 
-        Vec3d yOffset = new Vec3d(0, 0.5, 0);
+            lineConsumer.setLineWidth(3.0f);
 
-        lineConsumer.lineWidth(3.0f);
+            Iterator<Vec3> it = points.iterator();
+            if (!it.hasNext()) return;
 
-        Iterator<Vec3d> it = points.iterator();
-        if (!it.hasNext()) return;
+            Vec3 prevPoint = it.next().add(yOffset);
 
-        Vec3d prevPoint = it.next().add(yOffset);
+            while (it.hasNext()) {
+                Vec3 currentPoint = it.next().add(yOffset);
+                drawLine(prevPoint, currentPoint, pose.pose(), lineConsumer, r, g, b);
+                prevPoint = currentPoint;
+            }
 
-        while (it.hasNext()) {
-            Vec3d currentPoint = it.next().add(yOffset);
-            drawLine(prevPoint, currentPoint, matrix4f, lineConsumer, r, g, b);
-            prevPoint = currentPoint;
-        }
-
-        lineConsumer.lineWidth(1.0f);
+            lineConsumer.setLineWidth(1.0f);
+        });
     }
 
     private static void drawRect(Matrix4f matrix, VertexConsumer buffer, float s, float z, float r, float g, float b, float a) {
@@ -484,14 +470,14 @@ public class InfoRenderer {
     }
 
     private static void drawVertex(Matrix4f matrix, VertexConsumer buffer, float x, float y, float z, float r, float g, float b, float a) {
-        buffer.vertex(matrix, x, y, z)
-                .color(r, g, b, a)
-                .texture(0.0f, 0.0f)
-                .light(15728880)
-                .normal(0.0f, 0.0f, 1.0f);
+        buffer.addVertex(matrix, x, y, z)
+                .setColor(r, g, b, a)
+                .setUv(0.0f, 0.0f)
+                .setLight(15728880)
+                .setNormal(0.0f, 0.0f, 1.0f);
     }
 
-    public static void drawLine(Vec3d startPoint, Vec3d endPoint,
+    public static void drawLine(Vec3 startPoint, Vec3 endPoint,
                                 Matrix4f matrix, VertexConsumer lineConsumer,
                                 float r, float g, float b) {
 
@@ -507,8 +493,8 @@ public class InfoRenderer {
 
         //LINES 的顶点格式包含 LineWidth 元素，必须每个顶点都写一次，否则 BufferBuilder 会抛
         //"Missing elements in vertex: LineWidth"（只在循环外设一次是不够的）。
-        lineConsumer.vertex(matrix, startX, startY, startZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z).lineWidth(3.0f);
-        lineConsumer.vertex(matrix, endX, endY, endZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z).lineWidth(3.0f);
+        lineConsumer.addVertex(matrix, startX, startY, startZ).setColor(r, g, b, 1.0f).setNormal(normal.x,normal.y,normal.z).setLineWidth(3.0f);
+        lineConsumer.addVertex(matrix, endX, endY, endZ).setColor(r, g, b, 1.0f).setNormal(normal.x,normal.y,normal.z).setLineWidth(3.0f);
     }
 
     public static boolean shouldRender(Entity entity) {
@@ -518,15 +504,15 @@ public class InfoRenderer {
             return false;
         }
 
-        PlayerEntity player = MinecraftClient.getInstance().player;
-        if (player != null && entity.squaredDistanceTo(player) > config.infoRenderDistance * config.infoRenderDistance) {
+        Player player = Minecraft.getInstance().player;
+        if (player != null && entity.distanceToSqr(player) > config.infoRenderDistance * config.infoRenderDistance) {
             return false;
         }
 
-        return !config.mergeStackingMinecartInfo || MinecartClientHandler.isLeader(entity.getUuid());
+        return !config.mergeStackingMinecartInfo || MinecartClientHandler.isLeader(entity.getUUID());
     }
 
-    public static List<MutableText> getInfoTexts(MinecartDataPayload displayInfo){
+    public static List<MutableComponent> getInfoTexts(MinecartDataPayload displayInfo){
         var config = MinecartVisualizerConfig.getInstance();
         MinecartVisualizerConfig.SpeedUnit unit = config.speedUnit;
         boolean isMps = (unit == MinecartVisualizerConfig.SpeedUnit.METERS_PER_SECOND);
@@ -541,7 +527,7 @@ public class InfoRenderer {
         return displayInfo.getInfoTexts(config.accuracy, enableSettings);
     }
 
-    public static List<MutableText> getTNTMinecartInfoTexts(TNTMinecartDataPayload displayInfo){
+    public static List<MutableComponent> getTNTMinecartInfoTexts(TNTMinecartDataPayload displayInfo){
         var config = MinecartVisualizerConfig.getInstance();
 
         boolean[] enableSettings = {
@@ -576,7 +562,7 @@ public class InfoRenderer {
         }
     }
 
-    public static void drawTrackerPointBox(MatrixStack matrices, VertexConsumer lines, TrackerColor color,
+    public static void drawTrackerPointBox(PoseStack matrices, SubmitNodeCollector collector, TrackerColor color,
                                            BlockPos targetPos, boolean active) {
         var config = MinecartVisualizerConfig.getInstance();
 
@@ -606,23 +592,20 @@ public class InfoRenderer {
         double minY = targetPos.getY() ;
         double minZ = targetPos.getZ();
 
-        Box standardBox = new Box(minX, minY, minZ, minX + 1.0, minY + 1.0, minZ + 1.0);
+        AABB standardBox = new AABB(minX, minY, minZ, minX + 1.0, minY + 1.0, minZ + 1.0);
 
-        drawBox(matrices, lines, standardBox.expand(0.005), r, g, b, a);
+        drawBox(matrices, collector, standardBox.inflate(0.005), r, g, b, a);
     }
 
-    private static void drawBox(MatrixStack matrices, VertexConsumer vertexConsumer,
-                                Box box, float red, float green, float blue, float alpha) {
-        VoxelShape shape = VoxelShapes.cuboid(box);
-        int color = ColorHelper.getArgb(
+    private static void drawBox(PoseStack matrices, SubmitNodeCollector collector,
+                                AABB box, float red, float green, float blue, float alpha) {
+        VoxelShape shape = Shapes.create(box);
+        int color = ARGB.color(
                 (int)(alpha * 255),
                 (int)(red * 255),
                 (int)(green * 255),
                 (int)(blue * 255)
         );
-        VertexRendering.drawOutline(matrices, vertexConsumer, shape, 0.0, 0.0, 0.0, color, (float) 2.0);
+        collector.submitShapeOutline(matrices, shape, CustomRenderLayers.CUSTOM_LINES, color, (float) 2.0, false);
     }
 }
-
-
-

@@ -5,13 +5,12 @@ import dev.isxander.yacl3.config.v2.api.ConfigClassHandler;
 import dev.isxander.yacl3.config.v2.api.SerialEntry;
 import dev.isxander.yacl3.config.v2.api.serializer.GsonConfigSerializerBuilder;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.Identifier;
-
+import net.minecraft.resources.Identifier;
 import java.awt.Color;
 
 public final class MinecartVisualizerConfig {
     public static final ConfigClassHandler<MinecartVisualizerConfig> HANDLER = ConfigClassHandler.createBuilder(MinecartVisualizerConfig.class)
-            .id(Identifier.of("minecartvisualizer", "config"))
+            .id(Identifier.fromNamespaceAndPath("minecartvisualizer", "config"))
             .serializer(config -> GsonConfigSerializerBuilder.create(config)
                     .setPath(FabricLoader.getInstance().getConfigDir().resolve("minecart_visualizer.json5"))
                     .appendGsonBuilder(GsonBuilder::setPrettyPrinting)

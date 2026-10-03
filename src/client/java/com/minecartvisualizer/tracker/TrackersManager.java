@@ -1,7 +1,7 @@
 package com.minecartvisualizer.tracker;
 
-import net.minecraft.client.MinecraftClient;
 import java.util.*;
+import net.minecraft.client.Minecraft;
 
 public class TrackersManager {
     private static final Map<UUID, HopperMinecartTracker> trackers = new HashMap<>();
@@ -16,7 +16,7 @@ public class TrackersManager {
     }
 
     public static void setTracker(UUID uuid, int entityId, TrackerColor color) {
-        if (MinecraftClient.getInstance().player == null) return;
+        if (Minecraft.getInstance().player == null) return;
 
         if (trackers.containsKey(uuid)) {
             HopperMinecartTracker existingTracker = trackers.get(uuid);
@@ -26,7 +26,7 @@ public class TrackersManager {
             } else {
                 //颜色不同则更换追踪器
                 trackers.put(uuid, new HopperMinecartTracker(
-                        color, uuid, MinecraftClient.getInstance().player, entityId
+                        color, uuid, Minecraft.getInstance().player, entityId
                 ));
             }
             return;
@@ -34,7 +34,7 @@ public class TrackersManager {
 
         //新建追踪器
         trackers.put(uuid, new HopperMinecartTracker(
-                color, uuid, MinecraftClient.getInstance().player, entityId
+                color, uuid, Minecraft.getInstance().player, entityId
         ));
     }
 

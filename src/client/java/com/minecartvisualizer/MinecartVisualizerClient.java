@@ -5,19 +5,21 @@ import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.config.MinecartVisualizerConfigScreen;
 import com.minecartvisualizer.tracker.TrackerColor;
 import com.minecartvisualizer.tracker.TrackersManager;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
 import com.minecartvisualizer.tracker.TrackerPointsManager;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import net.minecraft.item.DyeItem;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.item.DyeItem;
+import net.minecraft.world.item.ItemStack;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.*;
@@ -25,8 +27,8 @@ import java.util.*;
 
 public class MinecartVisualizerClient implements ClientModInitializer {
 
-	public static KeyBinding mainConfigKey;
-	public static KeyBinding subConfigKey;
+	public static KeyMapping mainConfigKey;
+	public static KeyMapping subConfigKey;
 	public static UUID uuid;
 
 	public void onInitializeClient() {
@@ -45,38 +47,38 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 		MinecartClientHandler.register();
 		MinecartVisualizerCommands.registerCommands();
 
-		mainConfigKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		mainConfigKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 				"key.minecartvisualizer.config_main",
-				InputUtil.Type.KEYSYM,
+				InputConstants.Type.KEYSYM,
 				GLFW.GLFW_KEY_C,
-				KeyBinding.Category.DEBUG
+				KeyMapping.Category.DEBUG
 		));
 
-		subConfigKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+		subConfigKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 				"key.minecartvisualizer.config_sub",
-				InputUtil.Type.KEYSYM,
+				InputConstants.Type.KEYSYM,
 				GLFW.GLFW_KEY_V,
-				KeyBinding.Category.DEBUG
+				KeyMapping.Category.DEBUG
 		));
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			if (client.player == null) return;
 
-			InputUtil.Key mainKey = InputUtil.fromTranslationKey(mainConfigKey.getBoundKeyTranslationKey());
-			InputUtil.Key subKey = InputUtil.fromTranslationKey(subConfigKey.getBoundKeyTranslationKey());
+			InputConstants.Key mainKey = KeyMappingHelper.getBoundKeyOf(mainConfigKey);
+			InputConstants.Key subKey = KeyMappingHelper.getBoundKeyOf(subConfigKey);
 
-			if (mainKey.equals(InputUtil.UNKNOWN_KEY)) return;
+			if (mainKey.equals(InputConstants.UNKNOWN)) return;
 
-			boolean isSubKeyNone = subKey.equals(InputUtil.UNKNOWN_KEY);
+			boolean isSubKeyNone = subKey.equals(InputConstants.UNKNOWN);
 
 			if (isSubKeyNone) {
-				while (mainConfigKey.wasPressed()) {
-					client.setScreen(MinecartVisualizerConfigScreen.create(client.currentScreen));
+				while (mainConfigKey.consumeClick()) {
+					client.gui.setScreen(MinecartVisualizerConfigScreen.create(client.gui.screen()));
 				}
 			} else {
-				while (subConfigKey.wasPressed()) {
-					if (InputUtil.isKeyPressed(client.getWindow(), mainKey.getCode())) {
-						client.setScreen(MinecartVisualizerConfigScreen.create(client.currentScreen));
+				while (subConfigKey.consumeClick()) {
+					if (InputConstants.isKeyDown(client.getWindow(), mainKey.getValue())) {
+						client.gui.setScreen(MinecartVisualizerConfigScreen.create(client.gui.screen()));
 					}
 				}
 			}
@@ -84,21 +86,22 @@ public class MinecartVisualizerClient implements ClientModInitializer {
 
 		//漏斗矿车追踪器
 		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-			if (world.isClient() && entity instanceof net.minecraft.entity.vehicle.HopperMinecartEntity minecart && MinecartVisualizerConfig.getInstance().trackingByDye) {
-				ItemStack stack = player.getStackInHand(hand);
+			if (world.isClientSide() && entity instanceof net.minecraft.world.entity.vehicle.minecart.MinecartHopper minecart && MinecartVisualizerConfig.getInstance().trackingByDye) {
+				ItemStack stack = player.getItemInHand(hand);
 
 				if (stack.getItem() instanceof DyeItem dyeItem) {
-					TrackerColor selectedColor = TrackerColor.valueOf(dyeItem.getColor().name());
-					TrackersManager.setTracker(minecart.getUuid(),minecart.getId(), selectedColor);
-					player.sendMessage(Text.literal("Started tracking with color: " + selectedColor.getLabel()), true);
-					return ActionResult.SUCCESS;
+					DyeColor dyeColor = stack.get(DataComponents.DYE);
+					TrackerColor selectedColor = TrackerColor.valueOf(dyeColor.name());
+					TrackersManager.setTracker(minecart.getUUID(),minecart.getId(), selectedColor);
+					player.sendOverlayMessage(Component.literal("Started tracking with color: " + selectedColor.getLabel()));
+					return InteractionResult.SUCCESS;
 				}
 			}
-			return ActionResult.PASS;
+			return InteractionResult.PASS;
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
-			if (client.world != null) {
+			if (client.level != null) {
 				TrackersManager.cleanInvalidTracker();
 				TrackersManager.tickCounter();
 			}

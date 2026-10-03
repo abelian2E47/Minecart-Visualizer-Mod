@@ -1,23 +1,22 @@
 package com.minecartvisualizer;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.block.InventoryProvider;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.Entity;
-import net.minecraft.predicate.entity.EntityPredicates;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.entity.vehicle.HopperMinecartEntity;
-import net.minecraft.entity.vehicle.TntMinecartEntity;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.WorldlyContainerHolder;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySelector;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.MinecartHopper;
+import net.minecraft.world.entity.vehicle.minecart.MinecartTNT;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -33,24 +32,24 @@ public final class MinecartDataSender {
     private MinecartDataSender() {
     }
 
-    public static void sendMinecart(AbstractMinecartEntity cart, boolean removed) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void sendMinecart(AbstractMinecart cart, boolean removed) {
+        if (cart.level().isClientSide()) return;
 
-        ServerWorld serverWorld = (ServerWorld) cart.getEntityWorld();
+        ServerLevel serverWorld = (ServerLevel) cart.level();
 
-        double xMovement = cart.lastX - cart.getX();
-        double yMovement = cart.lastY - cart.getY();
-        double zMovement = cart.lastZ - cart.getZ();
-        double movement = new Vec3d(xMovement, yMovement, zMovement).length();
+        double xMovement = cart.xo - cart.getX();
+        double yMovement = cart.yo - cart.getY();
+        double zMovement = cart.zo - cart.getZ();
+        double movement = new Vec3(xMovement, yMovement, zMovement).length();
 
         MinecartDataPayload payload = new MinecartDataPayload(
-                cart.getUuid(),
-                cart.getEntityPos(),
-                cart.getVelocity(),
+                cart.getUUID(),
+                cart.position(),
+                cart.getDeltaMovement(),
                 movement,
-                cart.getYaw(),
+                cart.getYRot(),
                 cart.getId(),
-                serverWorld.getTime(),
+                serverWorld.getGameTime(),
                 removed
         );
 
@@ -59,16 +58,16 @@ public final class MinecartDataSender {
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
-    public static void sendHopper(HopperMinecartEntity cart) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void sendHopper(MinecartHopper cart) {
+        if (cart.level().isClientSide()) return;
 
-        ServerWorld serverWorld = (ServerWorld) cart.getEntityWorld();
+        ServerLevel serverWorld = (ServerLevel) cart.level();
 
-        UUID uuid = cart.getUuid();
+        UUID uuid = cart.getUUID();
         boolean enable = cart.isEnabled();
         List<ItemStack> items = new ArrayList<>(5);
         for (int i = 0; i < 5; i++) {
-            ItemStack stack = cart.getStack(i);
+            ItemStack stack = cart.getItem(i);
             items.add(stack == null ? ItemStack.EMPTY : stack);
         }
 
@@ -79,82 +78,82 @@ public final class MinecartDataSender {
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
-    public static void sendTnt(TntMinecartEntity cart) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void sendTnt(MinecartTNT cart) {
+        if (cart.level().isClientSide()) return;
 
-        ServerWorld serverWorld = (ServerWorld) cart.getEntityWorld();
+        ServerLevel serverWorld = (ServerLevel) cart.level();
 
         TNTMinecartDataPayload payload = new TNTMinecartDataPayload(
-                cart.getUuid(), cart.getFuseTicks(), false, Vec3d.ZERO, cart.getDamageWobbleStrength());
+                cart.getUUID(), cart.getFuse(), false, Vec3.ZERO, cart.getDamage());
 
         sendToNearby(serverWorld, cart, SEND_DISTANCE, TNTMinecartDataPayload.ID,
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
-    public static void sendExplosion(TntMinecartEntity cart) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void sendExplosion(MinecartTNT cart) {
+        if (cart.level().isClientSide()) return;
 
-        ServerWorld serverWorld = (ServerWorld) cart.getEntityWorld();
+        ServerLevel serverWorld = (ServerLevel) cart.level();
 
         TNTMinecartDataPayload payload = new TNTMinecartDataPayload(
-                cart.getUuid(), 0, true, cart.getEntityPos(), 0.0f);
+                cart.getUUID(), 0, true, cart.position(), 0.0f);
 
         sendToNearby(serverWorld, cart, 64.0, TNTMinecartDataPayload.ID,
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
     public static void sendCollision(MinecartCollisionPayload payload, Entity source) {
-        if (source.getEntityWorld().isClient()) return;
+        if (source.level().isClientSide()) return;
 
-        ServerWorld serverWorld = (ServerWorld) source.getEntityWorld();
+        ServerLevel serverWorld = (ServerLevel) source.level();
         sendToNearby(serverWorld, source, SEND_DISTANCE, MinecartCollisionPayload.ID,
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
-    public static void sendRemoval(AbstractMinecartEntity cart) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void sendRemoval(AbstractMinecart cart) {
+        if (cart.level().isClientSide()) return;
 
-        if (cart instanceof HopperMinecartEntity hopper) {
+        if (cart instanceof MinecartHopper hopper) {
             sendHopper(hopper);
         }
         sendMinecart(cart, true);
     }
 
 
-    public static Optional<BlockPos> findExtractionBlock(HopperMinecartEntity cart) {
-        World world = cart.getEntityWorld();
-        BlockPos pos = BlockPos.ofFloored(cart.getHopperX(), cart.getHopperY() + 1.0, cart.getHopperZ());
+    public static Optional<BlockPos> findExtractionBlock(MinecartHopper cart) {
+        Level world = cart.level();
+        BlockPos pos = BlockPos.containing(cart.getLevelX(), cart.getLevelY() + 1.0, cart.getLevelZ());
         BlockState state = world.getBlockState(pos);
 
         return hasBlockInventory(world, pos, state) ? Optional.of(pos) : Optional.empty();
     }
 
-    public static List<Box> findExtractionEntities(HopperMinecartEntity cart) {
-        World world = cart.getEntityWorld();
-        double x = cart.getHopperX();
-        double y = cart.getHopperY() + 1.0;
-        double z = cart.getHopperZ();
-        Box searchBox = new Box(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5);
+    public static List<AABB> findExtractionEntities(MinecartHopper cart) {
+        Level world = cart.level();
+        double x = cart.getLevelX();
+        double y = cart.getLevelY() + 1.0;
+        double z = cart.getLevelZ();
+        AABB searchBox = new AABB(x - 0.5, y - 0.5, z - 0.5, x + 0.5, y + 0.5, z + 0.5);
 
-        List<Box> boxes = new ArrayList<>();
-        for (Entity entity : world.getOtherEntities(cart, searchBox, EntityPredicates.VALID_INVENTORIES)) {
+        List<AABB> boxes = new ArrayList<>();
+        for (Entity entity : world.getEntities(cart, searchBox, EntitySelector.CONTAINER_ENTITY_SELECTOR)) {
             boxes.add(entity.getBoundingBox());
         }
         return boxes;
     }
 
-    private static boolean hasBlockInventory(World world, BlockPos pos, BlockState state) {
-        if (state.getBlock() instanceof InventoryProvider) {
+    private static boolean hasBlockInventory(Level world, BlockPos pos, BlockState state) {
+        if (state.getBlock() instanceof WorldlyContainerHolder) {
             return true;
         }
 
-        return state.hasBlockEntity() && world.getBlockEntity(pos) instanceof Inventory;
+        return state.hasBlockEntity() && world.getBlockEntity(pos) instanceof Container;
     }
 
-    private static void sendToNearby(ServerWorld world, Entity source, double distance,
-                                     CustomPayload.Id<?> payloadId, Consumer<ServerPlayerEntity> sender) {
+    private static void sendToNearby(ServerLevel world, Entity source, double distance,
+                                     CustomPacketPayload.Type<?> payloadId, Consumer<ServerPlayer> sender) {
         double squared = distance * distance;
-        world.getPlayers(player -> player.squaredDistanceTo(source) < squared).forEach(player -> {
+        world.getPlayers(player -> player.distanceToSqr(source) < squared).forEach(player -> {
             if (ServerPlayNetworking.canSend(player, payloadId)) {
                 sender.accept(player);
             }

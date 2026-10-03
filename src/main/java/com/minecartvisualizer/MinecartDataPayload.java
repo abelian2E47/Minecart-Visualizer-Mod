@@ -1,45 +1,32 @@
 package com.minecartvisualizer;
 import io.netty.buffer.ByteBuf;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.Vec3d;
 import java.util.ArrayList;
 import java.util.UUID;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.phys.Vec3;
 
-/**
- * 服务端每 tick 下发的矿车状态，是客户端所有矿车显示的权威数据源。
- *
- * <p>新增两个字段，用于消除客户端自行推算带来的显示误差：</p>
- * <ul>
- *     <li>{@code serverTime}：服务端世界时间（tick）。客户端用它做数据时效判定、
- *     追踪器运行时长、连续吸取持续 tick 数与计数器统计，不再使用客户端自己的
- *     {@code ClientWorld#getTime()}（客户端卡顿、单机暂停、掉帧都会让它与真实进度漂移）。</li>
- *     <li>{@code removed}：矿车被真正销毁（{@code KILLED} / {@code DISCARDED}）时
- *     由服务端补发的最后一次数据，客户端据此判定"矿车被摧毁"，
- *     不再依据客户端实体列表（离开视距或区块卸载会被误判为摧毁）。</li>
- * </ul>
- */
-public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double speed, float yaw, int id,
-                                  long serverTime, boolean removed) implements CustomPayload {
+public record MinecartDataPayload(UUID uuid, Vec3 pos, Vec3 velocity, double speed, float yaw, int id,
+                                  long serverTime, boolean removed) implements CustomPacketPayload {
 
-    public static final Id<MinecartDataPayload> ID = new CustomPayload.Id<>(Minecartvisualizer.MINECART_DATA_PACKET_ID);
+    public static final Type<MinecartDataPayload> ID = new CustomPacketPayload.Type<>(Minecartvisualizer.MINECART_DATA_PACKET_ID);
 
-    public static final PacketCodec<ByteBuf, Vec3d> VEC3D_CODEC = PacketCodec.of(
+    public static final StreamCodec<ByteBuf, Vec3> VEC3D_CODEC = StreamCodec.ofMember(
             (value, buf) -> {
                 buf.writeDouble(value.x);
                 buf.writeDouble(value.y);
                 buf.writeDouble(value.z);
             },
-            buf -> new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble())
+            buf -> new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble())
     );
 
-    public static final PacketCodec<RegistryByteBuf, MinecartDataPayload> CODEC = PacketCodec.of(
+    public static final StreamCodec<RegistryFriendlyByteBuf, MinecartDataPayload> CODEC = StreamCodec.ofMember(
             (payload, buf) -> {
-                buf.writeUuid(payload.uuid());
+                buf.writeUUID(payload.uuid());
                 buf.writeDouble(payload.pos().x);
                 buf.writeDouble(payload.pos().y);
                 buf.writeDouble(payload.pos().z);
@@ -53,9 +40,9 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
                 buf.writeBoolean(payload.removed());
             },
             buf -> new MinecartDataPayload(
-                    buf.readUuid(),
-                    new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
-                    new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                    buf.readUUID(),
+                    new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                    new Vec3(buf.readDouble(), buf.readDouble(), buf.readDouble()),
                     buf.readDouble(),
                     buf.readFloat(),
                     buf.readInt(),
@@ -65,33 +52,32 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
     );
 
     @Override
-    public Id<? extends CustomPayload> getId() {
+    public Type<? extends CustomPacketPayload> type() {
         return ID;
     }
 
-
-    public ArrayList<MutableText> getInfoTexts(int accuracy, boolean[] EnableFunctions) {
-        ArrayList<MutableText> infoTexts = new ArrayList<>();
+    public ArrayList<MutableComponent> getInfoTexts(int accuracy, boolean[] EnableFunctions) {
+        ArrayList<MutableComponent> infoTexts = new ArrayList<>();
 
         if (this.pos() == null) {
-            infoTexts.add(Text.translatable("info.minecartvisualizer.pos").append(Text.literal("unknown")));
+            infoTexts.add(Component.translatable("info.minecartvisualizer.pos").append(Component.literal("unknown")));
         } else if (EnableFunctions[0]) {
-            infoTexts.add(Text.translatable("info.minecartvisualizer.pos")
+            infoTexts.add(Component.translatable("info.minecartvisualizer.pos")
                     .append(FormatTools.formatVec(this.pos(), accuracy, false)));
         }
 
         if (this.velocity() == null) {
-            infoTexts.add(Text.translatable("info.minecartvisualizer.velocity")
-                    .append(Text.literal("unknown").formatted(Formatting.GRAY)));
+            infoTexts.add(Component.translatable("info.minecartvisualizer.velocity")
+                    .append(Component.literal("unknown").withStyle(ChatFormatting.GRAY)));
         } else if (EnableFunctions[1]) {
-            Vec3d v = this.velocity();
-            MutableText velocityText = Text.translatable("info.minecartvisualizer.velocity");
+            Vec3 v = this.velocity();
+            MutableComponent velocityText = Component.translatable("info.minecartvisualizer.velocity");
 
             if (Double.isInfinite(v.x) || Double.isInfinite(v.y) || Double.isInfinite(v.z)) {
-                velocityText.append(Text.literal("∞"));
+                velocityText.append(Component.literal("∞"));
             }
             else if (Double.isNaN(v.x) || Double.isNaN(v.y) || Double.isNaN(v.z)) {
-                velocityText.append(Text.literal("NaN"));
+                velocityText.append(Component.literal("NaN"));
             }
             else {
                 velocityText.append(FormatTools.formatVec(v, accuracy, true));
@@ -101,22 +87,21 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
         }
 
         if (EnableFunctions[2]) {
-            infoTexts.add(Text.translatable("info.minecartvisualizer.yaw")
+            infoTexts.add(Component.translatable("info.minecartvisualizer.yaw")
                     .append(FormatTools.formatDouble(this.yaw(), accuracy, false)));
         }
 
         if (EnableFunctions[3]){
             if (EnableFunctions[4]){
-                infoTexts.add(Text.translatable("info.minecartvisualizer.speed")
+                infoTexts.add(Component.translatable("info.minecartvisualizer.speed")
                         .append(FormatTools.formatDouble(this.speed()*20, accuracy, true)).append("m/s"));
             }else {
-                infoTexts.add(Text.translatable("info.minecartvisualizer.speed")
+                infoTexts.add(Component.translatable("info.minecartvisualizer.speed")
                         .append(FormatTools.formatDouble(this.speed(), accuracy, true)).append("m/gt"));
             }
         }
 
         return infoTexts;
     }
-
 
 }

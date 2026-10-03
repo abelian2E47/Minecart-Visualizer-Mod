@@ -1,15 +1,15 @@
 package com.minecartvisualizer;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public final class MinecartCollisionReporter {
 
@@ -19,72 +19,72 @@ public final class MinecartCollisionReporter {
     }
 
 //方块碰撞
-    public static void reportBlockCollision(AbstractMinecartEntity cart,
-                                            Vec3d velocityBefore, Vec3d velocityAfter) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void reportBlockCollision(AbstractMinecart cart,
+                                            Vec3 velocityBefore, Vec3 velocityAfter) {
+        if (cart.level().isClientSide()) return;
 
-        Vec3d delta = blockedAxisDelta(velocityBefore, velocityAfter);
-        if (delta.lengthSquared() < MIN_DELTA * MIN_DELTA) return;
+        Vec3 delta = blockedAxisDelta(velocityBefore, velocityAfter);
+        if (delta.lengthSqr() < MIN_DELTA * MIN_DELTA) return;
 
-        Vec3d probeDirection = delta.normalize().negate();
+        Vec3 probeDirection = delta.normalize().reverse();
 
-        World world = cart.getEntityWorld();
+        Level world = cart.level();
         BlockPos hit = findBlockedBlock(world, cart.getBoundingBox(), probeDirection);
 
         String targetId = "";
-        Vec3d targetPos = cart.getEntityPos().add(probeDirection);
+        Vec3 targetPos = cart.position().add(probeDirection);
         if (hit != null) {
             BlockState state = world.getBlockState(hit);
-            targetId = Registries.BLOCK.getId(state.getBlock()).toString();
-            targetPos = Vec3d.ofCenter(hit);
+            targetId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+            targetPos = Vec3.atCenterOf(hit);
         }
 
-        send(cart, cart.getEntityPos(), delta, velocityBefore, velocityAfter,
+        send(cart, cart.position(), delta, velocityBefore, velocityAfter,
                 true, targetId, "", targetPos);
     }
 
-    private static Vec3d blockedAxisDelta(Vec3d before, Vec3d after) {
+    private static Vec3 blockedAxisDelta(Vec3 before, Vec3 after) {
         double x = isZeroed(before.x, after.x) ? -before.x : 0.0;
         double z = isZeroed(before.z, after.z) ? -before.z : 0.0;
-        return new Vec3d(x, 0.0, z);
+        return new Vec3(x, 0.0, z);
     }
 
     private static boolean isZeroed(double before, double after) {
         return after == 0.0 && Math.abs(before) > MIN_DELTA;
     }
 
-    public static void reportEntityCollision(AbstractMinecartEntity cart, Entity other,
-                                             Vec3d velocityBefore, Vec3d velocityAfter) {
-        if (cart.getEntityWorld().isClient()) return;
+    public static void reportEntityCollision(AbstractMinecart cart, Entity other,
+                                             Vec3 velocityBefore, Vec3 velocityAfter) {
+        if (cart.level().isClientSide()) return;
 
-        Vec3d delta = velocityAfter.subtract(velocityBefore);
-        if (delta.lengthSquared() < MIN_DELTA * MIN_DELTA) return;
+        Vec3 delta = velocityAfter.subtract(velocityBefore);
+        if (delta.lengthSqr() < MIN_DELTA * MIN_DELTA) return;
 
-        String targetId = Registries.ENTITY_TYPE.getId(other.getType()).toString();
+        String targetId = BuiltInRegistries.ENTITY_TYPE.getKey(other.getType()).toString();
         String customName = "";
         if (other.hasCustomName() && other.getCustomName() != null) {
             customName = other.getCustomName().getString();
         }
 
-        send(cart, cart.getEntityPos(), delta, velocityBefore, velocityAfter,
-                false, targetId, customName, other.getEntityPos());
+        send(cart, cart.position(), delta, velocityBefore, velocityAfter,
+                false, targetId, customName, other.position());
     }
 
-    private static void send(AbstractMinecartEntity cart, Vec3d pos, Vec3d delta,
-                             Vec3d velocityBefore, Vec3d velocityAfter,
+    private static void send(AbstractMinecart cart, Vec3 pos, Vec3 delta,
+                             Vec3 velocityBefore, Vec3 velocityAfter,
                              boolean blockTarget, String targetId, String targetCustomName,
-                             Vec3d targetPos) {
-        long serverTime = ((ServerWorld) cart.getEntityWorld()).getTime();
+                             Vec3 targetPos) {
+        long serverTime = ((ServerLevel) cart.level()).getGameTime();
 
         MinecartCollisionPayload payload = new MinecartCollisionPayload(
-                cart.getUuid(), pos, delta,
+                cart.getUUID(), pos, delta,
                 velocityBefore.length(), velocityAfter.length(),
                 blockTarget, targetId, targetCustomName, targetPos, serverTime);
 
         MinecartDataSender.sendCollision(payload, cart);
     }
 
-    private static BlockPos findBlockedBlock(World world, Box box, Vec3d direction) {
+    private static BlockPos findBlockedBlock(Level world, AABB box, Vec3 direction) {
         double ax = Math.abs(direction.x);
         double ay = Math.abs(direction.y);
         double az = Math.abs(direction.z);
@@ -106,19 +106,19 @@ public final class MinecartCollisionReporter {
 
         double eps = 1.0E-3;
         double depth = 0.05;
-        Box probe = switch (axis) {
+        AABB probe = switch (axis) {
             case X -> sign > 0
-                    ? new Box(box.maxX + eps, box.minY, box.minZ, box.maxX + eps + depth, box.maxY, box.maxZ)
-                    : new Box(box.minX - eps - depth, box.minY, box.minZ, box.minX - eps, box.maxY, box.maxZ);
+                    ? new AABB(box.maxX + eps, box.minY, box.minZ, box.maxX + eps + depth, box.maxY, box.maxZ)
+                    : new AABB(box.minX - eps - depth, box.minY, box.minZ, box.minX - eps, box.maxY, box.maxZ);
             case Y -> sign > 0
-                    ? new Box(box.minX, box.maxY + eps, box.minZ, box.maxX, box.maxY + eps + depth, box.maxZ)
-                    : new Box(box.minX, box.minY - eps - depth, box.minZ, box.maxX, box.minY - eps, box.maxZ);
+                    ? new AABB(box.minX, box.maxY + eps, box.minZ, box.maxX, box.maxY + eps + depth, box.maxZ)
+                    : new AABB(box.minX, box.minY - eps - depth, box.minZ, box.maxX, box.minY - eps, box.maxZ);
             case Z -> sign > 0
-                    ? new Box(box.minX, box.minY, box.maxZ + eps, box.maxX, box.maxY, box.maxZ + eps + depth)
-                    : new Box(box.minX, box.minY, box.minZ - eps - depth, box.maxX, box.maxY, box.minZ - eps);
+                    ? new AABB(box.minX, box.minY, box.maxZ + eps, box.maxX, box.maxY, box.maxZ + eps + depth)
+                    : new AABB(box.minX, box.minY, box.minZ - eps - depth, box.maxX, box.maxY, box.minZ - eps);
         };
 
-        for (BlockPos pos : BlockPos.iterate(probe)) {
+        for (BlockPos pos : BlockPos.betweenClosed(probe)) {
             BlockState state = world.getBlockState(pos);
             if (state.isAir()) continue;
             if (state.getCollisionShape(world, pos).isEmpty()) continue;
