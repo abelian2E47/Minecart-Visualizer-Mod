@@ -132,10 +132,14 @@ public class InfoRenderer {
         ItemRenderer itemRenderer = MinecraftClient.getInstance().getItemRenderer();
         TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
 
+        //格子偏移用 slotSize，物品与堆叠数缩放用 itemSize（数值关系与 1.21.11 一致）
+        float slotSize = config.inventorySlotSize;
+        float itemSize = config.inventoryItemSize;
+
         matrices.push();
 
-        double xOffset = (col - (cols - 1) / 2.0) * 0.5;
-        double yOffset = row * 0.5;
+        double xOffset = (col - (cols - 1) / 2.0) * 0.5 * slotSize;
+        double yOffset = row * 0.5 * slotSize;
 
         matrices.translate(xOffset, yOffset, 0.0);
 
@@ -153,11 +157,11 @@ public class InfoRenderer {
                 changeColor ? MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_LOCKED_COLOR.getRGB()
                         : MinecartVisualizerConfig.DEFAULT_SLOT_BORDER_COLOR.getRGB());
 
-        drawRect(matrix, buffer, 0.19f, -0.06f, background[0], background[1], background[2], 0.25f);//背景
-        drawRect(matrix, buffer, 0.22f, -0.08f, border[0], border[1], border[2], 0.8f);//边框
+        drawRect(matrix, buffer, 0.19f * slotSize, -0.06f * slotSize, background[0], background[1], background[2], 0.25f);//背景
+        drawRect(matrix, buffer, 0.22f * slotSize, -0.08f * slotSize, border[0], border[1], border[2], 0.8f);//边框
 
         matrices.push();
-        matrices.scale(0.38f, 0.38f, 0.38f);
+        matrices.scale(0.38f * itemSize, 0.38f * itemSize, 0.38f * itemSize);
         getCustomRenderLayer = true;
         itemRenderer.renderItem(item, ModelTransformationMode.GUI , 0xF000F0,
                 OverlayTexture.DEFAULT_UV, matrices, immediate, null, 0);
@@ -167,8 +171,8 @@ public class InfoRenderer {
         if (enableCount && item.getCount() > 1) {
             String countString = String.valueOf(item.getCount());
             matrices.push();
-            matrices.translate(0.12, -0.1, 0.1);
-            matrices.scale(0.017f, -0.017f, 0.017f);
+            matrices.translate(0.12 * slotSize, -0.1 * slotSize, 0.1);
+            matrices.scale(0.017f * itemSize, -0.017f * itemSize, 0.017f * itemSize);
             textRenderer.draw(countString, 0.0f, 0.0f,
                     Colors.rgb(config.itemCountTextColor, MinecartVisualizerConfig.DEFAULT_ITEM_COUNT_TEXT_COLOR.getRGB()) | 0xFF000000,
                     false, matrices.peek().getPositionMatrix(), immediate,

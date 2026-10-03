@@ -4,8 +4,11 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "AbstractMinecartEntityMixin",
+    "EntityMoveCollisionMixin",
+    "EntityPushAwayFromMixin",
     "EntityRemovalMixin",
     "HopperMinecartEntityMixin",
+    "MinecartCollisionMixin",
     "TNTMinecartEntityMixin"
   ],
   "injectors": {

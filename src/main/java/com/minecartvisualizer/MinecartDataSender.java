@@ -117,6 +117,14 @@ public final class MinecartDataSender {
                 player -> ServerPlayNetworking.send(player, payload));
     }
 
+    public static void sendCollision(MinecartCollisionPayload payload, Entity source) {
+        if (source.getWorld().isClient()) return;
+
+        ServerWorld serverWorld = (ServerWorld) source.getWorld();
+        sendToNearby(serverWorld, source, SEND_DISTANCE, MinecartCollisionPayload.ID,
+                player -> ServerPlayNetworking.send(player, payload));
+    }
+
     /** 矿车被真正销毁时补发最后一份数据（带 {@code removed} 标记）。 */
     public static void sendRemoval(AbstractMinecartEntity cart) {
         if (cart.getWorld().isClient()) return;
