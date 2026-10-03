@@ -56,6 +56,8 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean enableHopperMinecartInventoryDisplay = true;
     @SerialEntry public boolean enableItemStackCountDisplay = true;
     @SerialEntry public int inventoryCols = 5;
+    @SerialEntry public float inventorySlotSize = 1.0f;
+    @SerialEntry public float inventoryItemSize = 1.0f;
 
     // --- TNT 矿车专项 ---
     @SerialEntry public boolean enableTNTFuseTicksDisplay = true;
@@ -101,6 +103,15 @@ public final class MinecartVisualizerConfig {
     @SerialEntry public boolean printDuration = true;
     @SerialEntry public boolean printPosition = true;
     @SerialEntry public int maxTrailPoints = 200;
+
+    // --- 矿车挤压提示 ---
+    @SerialEntry public boolean outputOnCollision = false;
+    @SerialEntry public float collisionMomentumThreshold = 0.02f;
+    @SerialEntry public int collisionMessageCooldown = 10;
+    @SerialEntry public boolean printCollisionPosition = true;
+    @SerialEntry public boolean printCollisionMomentum = false;
+    @SerialEntry public boolean printCollisionSpeedChange = false;
+    @SerialEntry public boolean printCollisionTarget = true;
 
     public static MinecartVisualizerConfig getInstance() {
         return HANDLER.instance();
