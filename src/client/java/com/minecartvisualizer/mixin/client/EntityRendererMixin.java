@@ -70,13 +70,11 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         double cameraZ = cameraPos.z;
         VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
 
-        //服务端权威坐标：在最近两次服务端广播之间按渲染进度插值；没有服务端数据时退回客户端渲染坐标
-        Vec3d serverPos = MinecartClientHandler.getServerPos(
-                entity.getUuid(), client.getRenderTickCounter().getTickProgress(true));
-        Vec3d anchor = serverPos != null ? serverPos : new Vec3d(renderState.x, renderState.y, renderState.z);
+        //绘制锚点用客户端插值坐标（renderState.x/y/z 已含实体渲染插值），物品栏与范围框跟随才平滑；
+        //服务端坐标只用于"数据是否新鲜、是否权威"的判定，不再当作绘制坐标（会一跳一跳）
+        Vec3d anchor = new Vec3d(renderState.x, renderState.y, renderState.z);
 
         if (entity instanceof HopperMinecartEntity) {
-            //只在数据仍然新鲜时绘制：服务端停止广播（走远、区块未加载）后不再画过期内容
             HopperMinecartDataPayload hopperMinecartData = MinecartClientHandler.getFreshHopperMinecartData(entity.getUuid());
             if (hopperMinecartData != null && InfoRenderer.shouldRender(entity)) {
                 MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
@@ -86,7 +84,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         }
 
         MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
-        renderTextInfo(entity, group, renderState, anchor, matrices, vertexConsumers);
+        renderTextInfo(entity, group, matrices, vertexConsumers);
     }
 
     @Unique
@@ -143,17 +141,14 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
             }
         }
 
+        //绘制吸取范围框
         if (!isLocked && (config.highlightExtractionTargets || config.renderHopperRanges)) {
-            //先判断这台矿车这一帧有没有吸取目标：有目标就只高亮目标，不再重复画范围框
-            //（每台矿车各自判断，避免"任意一台有目标就整帧都不画"）
             boolean hasTarget = false;
             if (config.highlightExtractionTargets) {
-                //吸取目标直接来自服务端广播
                 hasTarget = InfoRenderer.queueExtractionTargets(hopperMinecartData, config.extractionTargetBoxScale);
             }
 
             if (!hasTarget && config.renderHopperRanges) {
-                //范围框用服务端权威坐标构建立方体
                 Box[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity, anchor);
                 float rangeScale = config.hopperRangeBoxScale;
                 float[] pickupColor = Colors.rgbFloats(config.pickupRangeColor,
@@ -173,7 +168,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
     }
 
     @Unique
-    private void renderTextInfo(T entity, MinecartsGroup group, S renderState, Vec3d anchor,
+    private void renderTextInfo(T entity, MinecartsGroup group,
                                 MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers) {
         var config = MinecartVisualizerConfig.getInstance();
         if (!config.enableMinecartVisualization) return;
@@ -247,14 +242,8 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         double textYOffset = getTextYOffset(entity, group, config);
 
-        //文字整体锚定到服务端权威坐标（与框体、物品栏同一套坐标），
-        //偏移量就是服务端坐标与客户端渲染坐标之差，没有服务端数据时为 0
-        double offsetX = anchor.x - renderState.x;
-        double offsetY = anchor.y - renderState.y;
-        double offsetZ = anchor.z - renderState.z;
-
         matrices.push();
-        matrices.translate(offsetX, textYOffset + offsetY, offsetZ);
+        matrices.translate(0.0, textYOffset, 0.0);
         InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers,
                 Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000);
         matrices.pop();
