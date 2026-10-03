@@ -1,9 +1,9 @@
 package com.minecartvisualizer;
 
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.phys.Vec3;
 
 public class FormatTools {
-    public static String formatVec(Vec3d vec, int accuracy, boolean useSignificant) {
+    public static String formatVec(Vec3 vec, int accuracy, boolean useSignificant) {
         return String.format("(%s, %s, %s)",
                 formatDouble(vec.x, accuracy, useSignificant),
                 formatDouble(vec.y, accuracy, useSignificant),

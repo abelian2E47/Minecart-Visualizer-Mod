@@ -7,16 +7,24 @@ import com.minecartvisualizer.tracker.PointState;
 import com.minecartvisualizer.tracker.TrackerPointsManager;
 import com.minecartvisualizer.tracker.TrackersManager;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.*;
-import net.minecraft.client.render.state.WorldRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.client.util.ObjectAllocator;
-import net.minecraft.util.profiler.Profiler;
-import org.joml.Matrix4f;
+import com.mojang.blaze3d.framegraph.FrameGraphBuilder;
+import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.chunk.ChunkSectionsToRender;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.client.renderer.state.level.LevelRenderState;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,28 +33,28 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.Map;
 
-@Mixin(WorldRenderer.class)
+@Mixin(LevelRenderer.class)
 public abstract class WorldRenderMixin {
 
     @Inject(
-            method = "render",
+            method = "renderLevel",
             at = @At("HEAD")
     )
     private void clearQueuedTopRenderContent(
-            ObjectAllocator allocator, RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera,
-            Matrix4f positionMatrix, Matrix4f basicProjectionMatrix, Matrix4f projectionMatrix,
-            GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci
+            GraphicsResourceAllocator allocator, DeltaTracker tickCounter, boolean renderBlockOutline, CameraRenderState cameraState,
+            Matrix4fc modelViewMatrix, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky,
+            ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci
     ) {
         InfoRenderer.beginTopRenderFrame();
     }
     @Inject(
-            method = "render",
+            method = "renderLevel",
             at = @At("TAIL")
     )
     private void renderQueuedTopRenderContent(
-            ObjectAllocator allocator, RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera,
-            Matrix4f positionMatrix, Matrix4f basicProjectionMatrix, Matrix4f projectionMatrix,
-            GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci
+            GraphicsResourceAllocator allocator, DeltaTracker tickCounter, boolean renderBlockOutline, CameraRenderState cameraState,
+            Matrix4fc modelViewMatrix, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky,
+            ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci
     ) {
         if (!InfoRenderer.hasQueuedTopRenderContent()) {
             return;
@@ -54,10 +62,10 @@ public abstract class WorldRenderMixin {
 
         var modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
-        modelViewStack.mul(positionMatrix);
+        modelViewStack.mul(modelViewMatrix);
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
-            RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(client.getFramebuffer().getDepthAttachment(), 1.0);
+            Minecraft client = Minecraft.getInstance();
+            RenderSystem.getDevice().createCommandEncoder().clearDepthTexture(client.getMainRenderTarget().getDepthTexture(), 1.0);
             //三者互不排斥，各自在没有内容时自己返回。
             //（旧代码是"有吸取目标就整帧不画物品栏和范围框"，任何一台矿车有目标都会让全场面板闪烁消失。）
             InfoRenderer.renderQueuedExtractionTargets();
@@ -72,11 +80,11 @@ public abstract class WorldRenderMixin {
 
 
     @Inject(
-            method = "renderMain",
+            method = "addMainPass",
             at = @At(value = "TAIL")
     )
     private void renderTrials(
-            FrameGraphBuilder frameGraphBuilder, Frustum frustum, Matrix4f posMatrix, GpuBufferSlice fogBuffer, boolean renderBlockOutline, WorldRenderState state, RenderTickCounter tickCounter, Profiler profiler, CallbackInfo ci
+            FrameGraphBuilder frameGraphBuilder, Frustum frustum, Matrix4fc posMatrix, GpuBufferSlice fogBuffer, boolean renderBlockOutline, LevelRenderState state, DeltaTracker tickCounter, ProfilerFiller profiler, ChunkSectionsToRender chunkSectionsToRender, CallbackInfo ci
     ) {
         var config = MinecartVisualizerConfig.getInstance();
         boolean hasTrails = config.trackMinecartTrail && !TrackersManager.getAllTrackers().isEmpty();
@@ -84,16 +92,16 @@ public abstract class WorldRenderMixin {
         boolean hasPoints = !trackerPoints.isEmpty();
         if (!hasTrails && !hasPoints) return;
 
-        var customPass = frameGraphBuilder.createPass("minecart_custom_overlay");
-        //帧图只会执行"根 pass"（拥有输出资源的 pass）及其依赖，未被任何 pass 依赖的 pass 会被剔除；
-        //本 pass 既不产出资源也不被他人依赖，必须显式标记，否则 setRenderer 里的绘制永远不会执行（轨迹线与追踪点框都不显示）。
-        customPass.markToBeVisited();
-        customPass.setRenderer(() -> {
-            VertexConsumerProvider.Immediate consumers = MinecraftClient.getInstance().getBufferBuilders().getEntityVertexConsumers();
-            VertexConsumer lineConsumer = consumers.getBuffer(RenderLayers.LINES);
+        var customPass = frameGraphBuilder.addPass("minecart_custom_overlay");
+        //帧图只会执行"根 pass"（持有外部资源 handle 的 pass）及其依赖，未被依赖的 pass 会被剔除；
+        //本 pass 既不读写任何资源也不被他人依赖，必须显式关闭剔除，否则 executes 里的绘制永远不会执行（轨迹线与追踪点框都不显示）。
+        customPass.disableCulling();
+        customPass.executes(() -> {
+            MultiBufferSource.BufferSource consumers = Minecraft.getInstance().renderBuffers().bufferSource();
+            VertexConsumer lineConsumer = consumers.getBuffer(RenderTypes.LINES);
 
-            Vec3d camPos = state.cameraRenderState.pos;
-            MatrixStack matrices = new MatrixStack();
+            Vec3 camPos = state.cameraRenderState.pos;
+            PoseStack matrices = new PoseStack();
             matrices.translate(-camPos.x, -camPos.y, -camPos.z);
 
             if (hasTrails) {
@@ -115,8 +123,8 @@ public abstract class WorldRenderMixin {
                 }
             }
 
-            consumers.drawCurrentLayer();
-            consumers.draw(RenderLayers.LINES);
+            consumers.endLastBatch();
+            consumers.endBatch(RenderTypes.LINES);
         });
     }
 }

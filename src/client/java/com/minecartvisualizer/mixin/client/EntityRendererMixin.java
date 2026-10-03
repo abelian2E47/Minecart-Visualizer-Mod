@@ -5,25 +5,7 @@ import com.minecartvisualizer.config.MinecartVisualizerConfig;
 import com.minecartvisualizer.tracker.HopperMinecartTracker;
 import com.minecartvisualizer.tracker.TrackerColor;
 import com.minecartvisualizer.tracker.TrackersManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.command.OrderedRenderCommandQueue;
-import net.minecraft.client.render.entity.EntityRenderer;
-import net.minecraft.client.render.entity.state.EntityRenderState;
-import net.minecraft.client.render.state.CameraRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.entity.vehicle.HopperMinecartEntity;
-import net.minecraft.entity.vehicle.StorageMinecartEntity;
-import net.minecraft.entity.vehicle.TntMinecartEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Box;
+import com.mojang.blaze3d.vertex.PoseStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,6 +13,24 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import java.util.ArrayList;
 import java.util.WeakHashMap;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.entity.EntityRenderer;
+import net.minecraft.client.renderer.entity.state.EntityRenderState;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
+import net.minecraft.world.entity.vehicle.minecart.MinecartHopper;
+import net.minecraft.world.entity.vehicle.minecart.MinecartTNT;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,7 +42,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
     private final Map<S, T> stateToEntity = new WeakHashMap<>();
 
     @Inject(
-            method = "updateRenderState",
+            method = "extractRenderState",
             at = @At("TAIL")
     )
     private void captureEntity(T entity, S state, float tickProgress, CallbackInfo ci) {
@@ -50,48 +50,48 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
     }
 
     @Inject(
-            method = "render",
+            method = "submit",
             at = @At("HEAD")
     )
     private void renderMinecartInfo(
-            S renderState, MatrixStack matrices, OrderedRenderCommandQueue queue, CameraRenderState cameraState, CallbackInfo ci
+            S renderState, PoseStack matrices, SubmitNodeCollector queue, CameraRenderState cameraState, CallbackInfo ci
     ) {
         T entity = stateToEntity.get(renderState);
         if (entity == null) return;
 
-        if (!(entity instanceof AbstractMinecartEntity)) {
+        if (!(entity instanceof AbstractMinecart)) {
             return;
         }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        Vec3d cameraPos = client.gameRenderer.getCamera().getCameraPos();
+        Minecraft client = Minecraft.getInstance();
+        Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
         double cameraX = cameraPos.x;
         double cameraY = cameraPos.y;
         double cameraZ = cameraPos.z;
-        VertexConsumerProvider.Immediate vertexConsumers = client.getBufferBuilders().getEntityVertexConsumers();
+        MultiBufferSource.BufferSource vertexConsumers = client.renderBuffers().bufferSource();
 
         //绘制锚点用客户端插值坐标（renderState.x/y/z 已含实体渲染插值），物品栏与范围框跟随才平滑；
         //服务端坐标只用于"数据是否新鲜、是否权威"的判定，不再当作绘制坐标（会一跳一跳）
-        Vec3d anchor = new Vec3d(renderState.x, renderState.y, renderState.z);
+        Vec3 anchor = new Vec3(renderState.x, renderState.y, renderState.z);
 
-        if (entity instanceof HopperMinecartEntity) {
-            HopperMinecartDataPayload hopperMinecartData = MinecartClientHandler.getFreshHopperMinecartData(entity.getUuid());
+        if (entity instanceof MinecartHopper) {
+            HopperMinecartDataPayload hopperMinecartData = MinecartClientHandler.getFreshHopperMinecartData(entity.getUUID());
             if (hopperMinecartData != null && InfoRenderer.shouldRender(entity)) {
-                MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
+                MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUUID());
                 boolean isLocked = !hopperMinecartData.enable();
                 renderHopperMinecartInfo(hopperMinecartData, entity, group, isLocked, anchor, cameraX, cameraY, cameraZ, matrices, vertexConsumers);
             }
         }
 
-        MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUuid());
+        MinecartsGroup group = MinecartClientHandler.getGroup(entity.getUUID());
         renderTextInfo(entity, group, matrices, vertexConsumers);
     }
 
     @Unique
     private void renderHopperMinecartInfo(HopperMinecartDataPayload hopperMinecartData,T entity, MinecartsGroup group,
-                                          boolean isLocked, Vec3d anchor,
+                                          boolean isLocked, Vec3 anchor,
                                           double cameraX, double cameraY, double cameraZ,
-                                          MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers) {
+                                          PoseStack matrices, MultiBufferSource.BufferSource vertexConsumers) {
         var config = MinecartVisualizerConfig.getInstance();
         if (config.enableHopperMinecartInventoryDisplay) {
             int slotsPerMinecart = 0;
@@ -109,7 +109,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                         List<ItemStack> filteredItems = InfoRenderer.filterItems(data.items());
                         int finalCols = getFinalCols.apply(totalSlots);
                         InfoRenderer.queueInventory(
-                                filteredItems, entity.getEntityWorld(),
+                                filteredItems, entity.level(),
                                 anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                         );
                     }
@@ -125,7 +125,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                         List<ItemStack> filteredItems = InfoRenderer.filterItems(allItems);
                         int finalCols = getFinalCols.apply(totalSlots);
                         InfoRenderer.queueInventory(
-                                filteredItems, entity.getEntityWorld(),
+                                filteredItems, entity.level(),
                                 anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                         );
                     }
@@ -135,7 +135,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
                 List<ItemStack> filteredItems = InfoRenderer.filterItems(hopperMinecartData.items());
                 int finalCols = getFinalCols.apply(totalSlots);
                 InfoRenderer.queueInventory(
-                        filteredItems, entity.getEntityWorld(),
+                        filteredItems, entity.level(),
                         anchor.x, anchor.y, anchor.z, totalSlots, finalCols, isLocked
                 );
             }
@@ -149,7 +149,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
             }
 
             if (!hasTarget && config.renderHopperRanges) {
-                Box[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity, anchor);
+                AABB[] rangeBoxes = InfoRenderer.buildHopperRangeBoxes(entity, anchor);
                 float rangeScale = config.hopperRangeBoxScale;
                 float[] pickupColor = Colors.rgbFloats(config.pickupRangeColor,
                         MinecartVisualizerConfig.DEFAULT_PICKUP_RANGE_COLOR.getRGB());
@@ -169,22 +169,22 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
     @Unique
     private void renderTextInfo(T entity, MinecartsGroup group,
-                                MatrixStack matrices, VertexConsumerProvider.Immediate vertexConsumers) {
+                                PoseStack matrices, MultiBufferSource.BufferSource vertexConsumers) {
         var config = MinecartVisualizerConfig.getInstance();
         if (!config.enableMinecartVisualization) return;
         if (!config.enableInfoTextDisplay) return;
 
-        PlayerEntity player = MinecraftClient.getInstance().player;
-        if (player != null && entity.squaredDistanceTo(player) > config.infoRenderDistance * config.infoRenderDistance) return;
-        if (config.mergeStackingMinecartInfo && group != null && !entity.getUuid().equals(group.getLeader())) return;
+        Player player = Minecraft.getInstance().player;
+        if (player != null && entity.distanceToSqr(player) > config.infoRenderDistance * config.infoRenderDistance) return;
+        if (config.mergeStackingMinecartInfo && group != null && !entity.getUUID().equals(group.getLeader())) return;
 
-        MinecartDataPayload displayInfo = MinecartClientHandler.getFreshMinecartData(entity.getUuid());
+        MinecartDataPayload displayInfo = MinecartClientHandler.getFreshMinecartData(entity.getUUID());
         if (displayInfo == null) return;
         TNTMinecartDataPayload tntMinecartDisplayInfo = null;
-        if (config.trackTNTMinecart && entity instanceof TntMinecartEntity) {
-            tntMinecartDisplayInfo = MinecartClientHandler.getTNTMinecartData(entity.getUuid());
+        if (config.trackTNTMinecart && entity instanceof MinecartTNT) {
+            tntMinecartDisplayInfo = MinecartClientHandler.getTNTMinecartData(entity.getUUID());
         }
-        List<MutableText> infoTexts = new ArrayList<>(InfoRenderer.getInfoTexts(displayInfo));
+        List<MutableComponent> infoTexts = new ArrayList<>(InfoRenderer.getInfoTexts(displayInfo));
 
         if (tntMinecartDisplayInfo != null) {
             infoTexts.addAll(InfoRenderer.getTNTMinecartInfoTexts(tntMinecartDisplayInfo));
@@ -192,57 +192,57 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         if (config.enableDirectionDisplay) {
             String direction = MinecartVisualizerUtils.getMovementDirection(displayInfo.velocity());
-            infoTexts.add(Text.translatable("info.minecartvisualizer.direction", direction));
+            infoTexts.add(Component.translatable("info.minecartvisualizer.direction", direction));
         }
 
         if (config.mergeStackingMinecartInfo && config.enableStackedCountDisplay) {
-            int stackingMinecarts = MinecartClientHandler.getGroupSize(entity.getUuid());
+            int stackingMinecarts = MinecartClientHandler.getGroupSize(entity.getUUID());
             if (stackingMinecarts > 1)
-                infoTexts.add(Text.literal("x" + stackingMinecarts).formatted(Formatting.YELLOW));
+                infoTexts.add(Component.literal("x" + stackingMinecarts).withStyle(ChatFormatting.YELLOW));
         }
 
-        if (config.enableSignalStrengthDisplay && (entity instanceof StorageMinecartEntity)) {
+        if (config.enableSignalStrengthDisplay && (entity instanceof AbstractMinecartContainer)) {
             UUID targetUuid;
             if (config.mergeStackingMinecartInfo && group != null) {
                 UUID priority = MinecartClientHandler.getPriority(group);
-                targetUuid = priority != null ? priority : entity.getUuid();
+                targetUuid = priority != null ? priority : entity.getUUID();
             } else {
-                targetUuid = entity.getUuid();
+                targetUuid = entity.getUUID();
             }
 
             HopperMinecartDataPayload hopperData = MinecartClientHandler.getFreshHopperMinecartData(targetUuid);
             if (hopperData != null) {
                 int signal = calculateRedstoneSignal(hopperData.items());
-                infoTexts.add(Text.translatable("info.minecartvisualizer.signal", signal).formatted(Formatting.RED));
+                infoTexts.add(Component.translatable("info.minecartvisualizer.signal", signal).withStyle(ChatFormatting.RED));
             }
         }
 
-        if (config.enableShortIdDisplay && entity instanceof HopperMinecartEntity) {
-            if (TrackersManager.hasBeenTracked(entity.getUuid())) {
-                HopperMinecartTracker tracker = TrackersManager.getTracker(entity.getUuid());
+        if (config.enableShortIdDisplay && entity instanceof MinecartHopper) {
+            if (TrackersManager.hasBeenTracked(entity.getUUID())) {
+                HopperMinecartTracker tracker = TrackersManager.getTracker(entity.getUUID());
                 if (config.enableTrackerRuntimeDisplay) {
                     long runtime = tracker.getRunTime();
                     MinecartVisualizerConfig.TimeUnit unit = config.trackerTimeUnit;
 
                     if (unit == MinecartVisualizerConfig.TimeUnit.TICK) {
-                        infoTexts.add(Text.translatable("info.minecartvisualizer.runtime_tick", runtime));
+                        infoTexts.add(Component.translatable("info.minecartvisualizer.runtime_tick", runtime));
                     } else {
                         double convertedTime = (double) runtime / unit.getTicksPerUnit();
-                        infoTexts.add(Text.translatable("info.minecartvisualizer.runtime",
+                        infoTexts.add(Component.translatable("info.minecartvisualizer.runtime",
                                 String.format("%." + config.accuracy + "f", convertedTime),
                                 unit.getLabel()));
                     }
                 }
                 String shortUuid = tracker.getShortUuid();
                 TrackerColor trackerColor = tracker.getTrackerColor();
-                infoTexts.add(Text.literal("ID: " + shortUuid).withColor(trackerColor.getHex()));
+                infoTexts.add(Component.literal("ID: " + shortUuid).withColor(trackerColor.getHex()));
             }
         }
 
 
         double textYOffset = getTextYOffset(entity, group, config);
 
-        matrices.push();
+        matrices.pushPose();
         matrices.translate(0.0, textYOffset, 0.0);
         int infoTextColor = Colors.rgb(config.infoTextColor, MinecartVisualizerConfig.DEFAULT_INFO_TEXT_COLOR.getRGB()) | 0xFF000000;
         if (config.infoTextOnTop) {
@@ -251,13 +251,13 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
         } else {
             InfoRenderer.renderTexts(infoTexts, entity, matrices, vertexConsumers, infoTextColor);
         }
-        matrices.pop();
+        matrices.popPose();
     }
 
     @Unique
     private static <T extends Entity> double getTextYOffset(T entity, MinecartsGroup group, MinecartVisualizerConfig config) {
         double textYOffset = 0;
-        if (entity instanceof HopperMinecartEntity) {
+        if (entity instanceof MinecartHopper) {
             int totalItemsToRender = getTotalItemsToRender(group, config);
 
             if ((config.maxInventorySlotsToRender == 0) || (totalItemsToRender <= config.maxInventorySlotsToRender)) {
@@ -302,7 +302,7 @@ public class EntityRendererMixin<T extends Entity, S extends EntityRenderState> 
 
         for (ItemStack stack : inventory) {
             if (!stack.isEmpty()) {
-                totalFullness += (float) stack.getCount() / stack.getMaxCount();
+                totalFullness += (float) stack.getCount() / stack.getMaxStackSize();
                 hasAnyItem = true;
             }
         }

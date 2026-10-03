@@ -1,10 +1,10 @@
 package com.minecartvisualizer.mixin;
 
 import com.minecartvisualizer.MinecartCollisionReporter;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.MovementType;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,60 +12,60 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 
-@Mixin(AbstractMinecartEntity.class)
+@Mixin(AbstractMinecart.class)
 public abstract class MinecartCollisionMixin {
 
-    @Unique private Vec3d minecartvisualizer$velocityBeforeMove;
-    @Unique private Vec3d minecartvisualizer$pushVelocitySelf;
-    @Unique private Vec3d minecartvisualizer$pushVelocityOther;
+    @Unique private Vec3 minecartvisualizer$velocityBeforeMove;
+    @Unique private Vec3 minecartvisualizer$pushVelocitySelf;
+    @Unique private Vec3 minecartvisualizer$pushVelocityOther;
 
-    @Inject(method = "move(Lnet/minecraft/entity/MovementType;Lnet/minecraft/util/math/Vec3d;)V", at = @At("HEAD"))
-    private void minecartvisualizer$captureMoveStart(MovementType type, Vec3d movement, CallbackInfo ci) {
-        AbstractMinecartEntity self = (AbstractMinecartEntity) (Object) this;
-        if (self.getEntityWorld().isClient()) return;
+    @Inject(method = "move(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;)V", at = @At("HEAD"))
+    private void minecartvisualizer$captureMoveStart(MoverType type, Vec3 movement, CallbackInfo ci) {
+        AbstractMinecart self = (AbstractMinecart) (Object) this;
+        if (self.level().isClientSide()) return;
 
-        this.minecartvisualizer$velocityBeforeMove = self.getVelocity();
+        this.minecartvisualizer$velocityBeforeMove = self.getDeltaMovement();
     }
 
-    @Inject(method = "move(Lnet/minecraft/entity/MovementType;Lnet/minecraft/util/math/Vec3d;)V", at = @At("RETURN"))
-    private void minecartvisualizer$reportMoveCollision(MovementType type, Vec3d movement, CallbackInfo ci) {
-        Vec3d velocityBefore = this.minecartvisualizer$velocityBeforeMove;
+    @Inject(method = "move(Lnet/minecraft/world/entity/MoverType;Lnet/minecraft/world/phys/Vec3;)V", at = @At("RETURN"))
+    private void minecartvisualizer$reportMoveCollision(MoverType type, Vec3 movement, CallbackInfo ci) {
+        Vec3 velocityBefore = this.minecartvisualizer$velocityBeforeMove;
         this.minecartvisualizer$velocityBeforeMove = null;
 
         if (velocityBefore == null) return;
 
-        AbstractMinecartEntity self = (AbstractMinecartEntity) (Object) this;
-        if (self.getEntityWorld().isClient()) return;
+        AbstractMinecart self = (AbstractMinecart) (Object) this;
+        if (self.level().isClientSide()) return;
         if (!self.horizontalCollision) return;
 
-        MinecartCollisionReporter.reportBlockCollision(self, velocityBefore, self.getVelocity());
+        MinecartCollisionReporter.reportBlockCollision(self, velocityBefore, self.getDeltaMovement());
     }
 
-    @Inject(method = "pushAwayFrom(Lnet/minecraft/entity/Entity;)V", at = @At("HEAD"))
+    @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"))
     private void minecartvisualizer$capturePush(Entity entity, CallbackInfo ci) {
-        AbstractMinecartEntity self = (AbstractMinecartEntity) (Object) this;
-        if (self.getEntityWorld().isClient()) return;
+        AbstractMinecart self = (AbstractMinecart) (Object) this;
+        if (self.level().isClientSide()) return;
 
-        this.minecartvisualizer$pushVelocitySelf = self.getVelocity();
-        this.minecartvisualizer$pushVelocityOther = entity.getVelocity();
+        this.minecartvisualizer$pushVelocitySelf = self.getDeltaMovement();
+        this.minecartvisualizer$pushVelocityOther = entity.getDeltaMovement();
     }
 
-    @Inject(method = "pushAwayFrom(Lnet/minecraft/entity/Entity;)V", at = @At("RETURN"))
+    @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("RETURN"))
     private void minecartvisualizer$reportPush(Entity entity, CallbackInfo ci) {
-        Vec3d selfBefore = this.minecartvisualizer$pushVelocitySelf;
-        Vec3d otherBefore = this.minecartvisualizer$pushVelocityOther;
+        Vec3 selfBefore = this.minecartvisualizer$pushVelocitySelf;
+        Vec3 otherBefore = this.minecartvisualizer$pushVelocityOther;
         this.minecartvisualizer$pushVelocitySelf = null;
         this.minecartvisualizer$pushVelocityOther = null;
 
         if (selfBefore == null && otherBefore == null) return;
 
-        AbstractMinecartEntity self = (AbstractMinecartEntity) (Object) this;
+        AbstractMinecart self = (AbstractMinecart) (Object) this;
         if (selfBefore != null) {
-            MinecartCollisionReporter.reportEntityCollision(self, entity, selfBefore, self.getVelocity());
+            MinecartCollisionReporter.reportEntityCollision(self, entity, selfBefore, self.getDeltaMovement());
         }
 
-        if (otherBefore != null && entity instanceof AbstractMinecartEntity other) {
-            MinecartCollisionReporter.reportEntityCollision(other, self, otherBefore, other.getVelocity());
+        if (otherBefore != null && entity instanceof AbstractMinecart other) {
+            MinecartCollisionReporter.reportEntityCollision(other, self, otherBefore, other.getDeltaMovement());
         }
     }
 }

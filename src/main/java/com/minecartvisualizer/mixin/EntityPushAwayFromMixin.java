@@ -1,9 +1,9 @@
 package com.minecartvisualizer.mixin;
 
 import com.minecartvisualizer.MinecartCollisionReporter;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.vehicle.AbstractMinecartEntity;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
+import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -14,34 +14,34 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Entity.class)
 public abstract class EntityPushAwayFromMixin {
 
-    @Unique private Vec3d minecartvisualizer$pushVelocitySelf;
-    @Unique private Vec3d minecartvisualizer$pushVelocityOther;
+    @Unique private Vec3 minecartvisualizer$pushVelocitySelf;
+    @Unique private Vec3 minecartvisualizer$pushVelocityOther;
 
-    @Inject(method = "pushAwayFrom(Lnet/minecraft/entity/Entity;)V", at = @At("HEAD"))
+    @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("HEAD"))
     private void minecartvisualizer$capturePush(Entity entity, CallbackInfo ci) {
         Entity self = (Entity) (Object) this;
-        if (!(self instanceof AbstractMinecartEntity) && !(entity instanceof AbstractMinecartEntity)) return;
-        if (self.getEntityWorld().isClient()) return;
+        if (!(self instanceof AbstractMinecart) && !(entity instanceof AbstractMinecart)) return;
+        if (self.level().isClientSide()) return;
 
-        this.minecartvisualizer$pushVelocitySelf = self.getVelocity();
-        this.minecartvisualizer$pushVelocityOther = entity.getVelocity();
+        this.minecartvisualizer$pushVelocitySelf = self.getDeltaMovement();
+        this.minecartvisualizer$pushVelocityOther = entity.getDeltaMovement();
     }
 
-    @Inject(method = "pushAwayFrom(Lnet/minecraft/entity/Entity;)V", at = @At("RETURN"))
+    @Inject(method = "push(Lnet/minecraft/world/entity/Entity;)V", at = @At("RETURN"))
     private void minecartvisualizer$reportPush(Entity entity, CallbackInfo ci) {
-        Vec3d selfBefore = this.minecartvisualizer$pushVelocitySelf;
-        Vec3d otherBefore = this.minecartvisualizer$pushVelocityOther;
+        Vec3 selfBefore = this.minecartvisualizer$pushVelocitySelf;
+        Vec3 otherBefore = this.minecartvisualizer$pushVelocityOther;
         this.minecartvisualizer$pushVelocitySelf = null;
         this.minecartvisualizer$pushVelocityOther = null;
 
         if (selfBefore == null && otherBefore == null) return;
 
         Entity self = (Entity) (Object) this;
-        if (selfBefore != null && self instanceof AbstractMinecartEntity selfCart) {
-            MinecartCollisionReporter.reportEntityCollision(selfCart, entity, selfBefore, self.getVelocity());
+        if (selfBefore != null && self instanceof AbstractMinecart selfCart) {
+            MinecartCollisionReporter.reportEntityCollision(selfCart, entity, selfBefore, self.getDeltaMovement());
         }
-        if (otherBefore != null && entity instanceof AbstractMinecartEntity otherCart) {
-            MinecartCollisionReporter.reportEntityCollision(otherCart, self, otherBefore, otherCart.getVelocity());
+        if (otherBefore != null && entity instanceof AbstractMinecart otherCart) {
+            MinecartCollisionReporter.reportEntityCollision(otherCart, self, otherBefore, otherCart.getDeltaMovement());
         }
     }
 }

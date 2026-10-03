@@ -4,32 +4,31 @@
     import com.minecartvisualizer.MinecartClientHandler;
     import com.minecartvisualizer.MinecartCollisionPayload;
     import com.minecartvisualizer.config.MinecartVisualizerConfig;
-    import net.minecraft.client.network.ClientPlayerEntity;
-    import net.minecraft.item.ItemStack;
-    import net.minecraft.registry.Registries;
-    import net.minecraft.text.ClickEvent;
-    import net.minecraft.text.HoverEvent;
-    import net.minecraft.text.MutableText;
-    import net.minecraft.text.Text;
-    import net.minecraft.util.Formatting;
-    import net.minecraft.util.Identifier;
-    import net.minecraft.util.math.Vec3d;
-
-    import java.util.*;
+import java.util.*;
     import java.util.concurrent.ConcurrentLinkedDeque;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 
     public class HopperMinecartTracker {
         private final TrackerColor trackerColor;
 
-        private final Deque<Vec3d> trailPoints = new ConcurrentLinkedDeque<>();
-        private Vec3d lastPoint = null;
-        private Vec3d nextLastPoint = null;
+        private final Deque<Vec3> trailPoints = new ConcurrentLinkedDeque<>();
+        private Vec3 lastPoint = null;
+        private Vec3 nextLastPoint = null;
 
         private boolean removed = false;
         private final String shortUuid;
         private final UUID uuid;
         private final int id;
-        private final ClientPlayerEntity player;
+        private final LocalPlayer player;
         //追踪开始时的服务端时间（tick）；运行时长按服务端 tick 计，客户端卡顿/暂停不会让它漂移
         private final long trackStartServerTime;
         private long lastKnownServerTime;
@@ -37,7 +36,7 @@
         private long lastTrailServerTime = -1L;
         //最近一次确认数据仍然新鲜的时刻（毫秒），用于判断是不是彻底失联
         private long lastFreshMs;
-        private Vec3d leastPos = null;
+        private Vec3 leastPos = null;
         private List<ItemStack> lastInv = null;
         private final TrackerFilter filter;
 
@@ -45,11 +44,11 @@
         //开始连续吸取时物品栏
         private List<ItemStack> preChangeInv = null;
         //开始连续吸取时坐标
-        private Vec3d startPos = null;
+        private Vec3 startPos = null;
         //最近一次输出挤压消息时的服务端时间
         private long lastCollisionMsgTime = -1L;
 
-        public HopperMinecartTracker(TrackerColor trackerColor, UUID uuid, ClientPlayerEntity player, int id){
+        public HopperMinecartTracker(TrackerColor trackerColor, UUID uuid, LocalPlayer player, int id){
             this.id = id;
             this.uuid = uuid;
             this.shortUuid = uuid.toString().substring(0, 4);
@@ -95,7 +94,7 @@
             this.leastPos = minecartData.pos();
             List<ItemStack> currentInv = hopperData.items();
 
-            Vec3d currentPos = minecartData.pos();
+            Vec3 currentPos = minecartData.pos();
 
             //轨迹记录：按服务端 tick 采样（同一服务端 tick 只记一个点），而不是按客户端 tick
             if (config.trackMinecartTrail && currentTime != lastTrailServerTime) {
@@ -125,7 +124,6 @@
             }
         }
 
-        /** 服务端通知矿车已被销毁：用服务端补发的最后一份数据出报告。 */
         private void handleRemoval(MinecartClientHandler.RemovalNotice removal, MinecartVisualizerConfig config) {
             MinecartDataPayload finalData = removal.data();
             if (finalData != null) {
@@ -152,13 +150,6 @@
             this.removed = true;
         }
 
-        /**
-         * 输出服务端上报的"被挤压"事件。
-         *
-         * <p>服务端已经判定过"确实因碰撞损失了动量"，这里再做三件服务端做不了的事：
-         * 按客户端自己的阈值丢掉轻微挤压、按冷却限制同一台矿车的消息频率，
-         * 以及按配置决定消息里出现哪些字段。</p>
-         */
         private void handleCollisions(MinecartVisualizerConfig config) {
             if (!config.outputOnCollision) {
                 //关闭时也要把队列排空，否则重新打开会把关闭期间的历史事件一次性涌出来
@@ -186,79 +177,77 @@
 
         //矿车被挤压（碰撞）消息：事件数据全部来自服务端，这里只负责挑选字段与排版
         private void sendCollisionMessage(MinecartCollisionPayload collision, MinecartVisualizerConfig config) {
-            MutableText message = Text.literal("■ ").withColor(trackerColor.getHex())
-                    .append(Text.literal("[" + shortUuid + "] ").formatted(Formatting.GRAY))
-                    .append(Text.translatable("chat.minecartvisualizer.tracker.squeezed").formatted(Formatting.GOLD));
+            MutableComponent message = Component.literal("■ ").withColor(trackerColor.getHex())
+                    .append(Component.literal("[" + shortUuid + "] ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.translatable("chat.minecartvisualizer.tracker.squeezed").withStyle(ChatFormatting.GOLD));
 
             if (config.printCollisionTarget) {
-                MutableText target = Text.empty();
+                MutableComponent target = Component.empty();
                 if (collision.blockTarget()) {
-                    target.append(Text.translatable("chat.minecartvisualizer.tracker.squeezed.block",
+                    target.append(Component.translatable("chat.minecartvisualizer.tracker.squeezed.block",
                             blockDisplayName(collision.targetId())));
                 } else {
-                    target.append(Text.translatable("chat.minecartvisualizer.tracker.squeezed.entity",
+                    target.append(Component.translatable("chat.minecartvisualizer.tracker.squeezed.entity",
                             entityDisplayName(collision)));
                 }
-                message.append(Text.literal(" ")).append(target.formatted(Formatting.YELLOW));
+                message.append(Component.literal(" ")).append(target.withStyle(ChatFormatting.YELLOW));
             }
 
             if (config.printCollisionPosition) {
-                Vec3d pos = collision.pos();
+                Vec3 pos = collision.pos();
                 String posStr = String.format("%.1f %.1f %.1f", pos.x, pos.y, pos.z);
 
-                MutableText posText = Text.literal("\n  ").append(Text.translatable(
+                MutableComponent posText = Component.literal("\n  ").append(Component.translatable(
                         "chat.minecartvisualizer.tracker.squeezed.position",
                         String.format("(%.1f, %.1f, %.1f)", pos.x, pos.y, pos.z)));
 
-                posText.formatted(Formatting.DARK_AQUA).styled(style -> style
+                posText.withStyle(ChatFormatting.DARK_AQUA).withStyle(style -> style
                         .withClickEvent(new ClickEvent.SuggestCommand("/tp @s " + posStr))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.translatable("chat.minecartvisualizer.tracker.tp_hover"))));
+                                Component.translatable("chat.minecartvisualizer.tracker.tp_hover"))));
 
                 message.append(posText);
             }
 
-            Vec3d deltaVelocity = collision.deltaVelocity();
+            Vec3 deltaVelocity = collision.deltaVelocity();
             if (config.printCollisionMomentum) {
-                message.append(Text.literal("\n  ").append(Text.translatable(
+                message.append(Component.literal("\n  ").append(Component.translatable(
                         "chat.minecartvisualizer.tracker.squeezed.momentum",
                         String.format("%.3f", deltaVelocity.length()),
                         String.format("(%.3f, %.3f, %.3f)",
                                 deltaVelocity.x, deltaVelocity.y, deltaVelocity.z)
-                ).formatted(Formatting.WHITE)));
+                ).withStyle(ChatFormatting.WHITE)));
             }
 
             if (config.printCollisionSpeedChange) {
-                message.append(Text.literal("\n  ").append(Text.translatable(
+                message.append(Component.literal("\n  ").append(Component.translatable(
                         "chat.minecartvisualizer.tracker.squeezed.speed",
                         String.format("%.3f", collision.speedBefore()),
                         String.format("%.3f", collision.speedAfter()),
                         String.format("%+.3f", collision.deltaSpeed())
-                ).formatted(Formatting.WHITE)));
+                ).withStyle(ChatFormatting.WHITE)));
             }
 
-            player.sendMessage(message, false);
+            player.sendSystemMessage(message);
         }
 
-        /** 方块注册名转成游戏内显示名；查不到就原样输出注册名。 */
-        private Text blockDisplayName(String targetId) {
+        private Component blockDisplayName(String targetId) {
             Identifier id = Identifier.tryParse(targetId);
-            if (id != null && Registries.BLOCK.containsId(id)) {
-                return Registries.BLOCK.get(id).getName();
+            if (id != null && BuiltInRegistries.BLOCK.containsKey(id)) {
+                return BuiltInRegistries.BLOCK.getValue(id).getName();
             }
-            return Text.literal(targetId);
+            return Component.literal(targetId);
         }
 
-        /** 实体注册名转成显示名；有自定义名称时额外附上（按服务端下发的原文）。 */
-        private Text entityDisplayName(MinecartCollisionPayload collision) {
+        private Component entityDisplayName(MinecartCollisionPayload collision) {
             Identifier id = Identifier.tryParse(collision.targetId());
-            Text base = (id != null && Registries.ENTITY_TYPE.containsId(id))
-                    ? Registries.ENTITY_TYPE.get(id).getName()
-                    : Text.literal(collision.targetId());
+            Component base = (id != null && BuiltInRegistries.ENTITY_TYPE.containsKey(id))
+                    ? BuiltInRegistries.ENTITY_TYPE.getValue(id).getDescription()
+                    : Component.literal(collision.targetId());
 
             String customName = collision.targetCustomName();
             if (customName != null && !customName.isEmpty()) {
-                return Text.empty().append(base).append(Text.literal(" (" + customName + ")"));
+                return Component.empty().append(base).append(Component.literal(" (" + customName + ")"));
             }
             return base;
         }
@@ -266,21 +255,21 @@
         private boolean hasInventoryChanged(List<ItemStack> currentInv) {
             if (lastInv == null) return false;
             for (int i = 0; i < 5; i++) {
-                if (!ItemStack.areEqual(lastInv.get(i), currentInv.get(i))) {
+                if (!ItemStack.matches(lastInv.get(i), currentInv.get(i))) {
                     return true;
                 }
             }
             return false;
         }
 
-        public void updateTrail(Vec3d newPoint, int maxPoints) {
+        public void updateTrail(Vec3 newPoint, int maxPoints) {
             if (lastPoint == null) {
                 lastPoint = newPoint;
                 trailPoints.add(newPoint);
                 return;
             }
 
-            if (newPoint.squaredDistanceTo(lastPoint) < 0.0001) {
+            if (newPoint.distanceToSqr(lastPoint) < 0.0001) {
                 return;
             }
 
@@ -301,14 +290,14 @@
 
         //工具方法
         //检查向量共线
-        public static boolean areCollinear(Vec3d a, Vec3d b, Vec3d c) {
-            Vec3d v1 = b.subtract(a);
-            Vec3d v2 = c.subtract(b);
+        public static boolean areCollinear(Vec3 a, Vec3 b, Vec3 c) {
+            Vec3 v1 = b.subtract(a);
+            Vec3 v2 = c.subtract(b);
 
-            Vec3d cross = v1.crossProduct(v2);
+            Vec3 cross = v1.cross(v2);
             double epsilon = 1e-6;
 
-            return cross.lengthSquared() < epsilon && v1.dotProduct(v2) > 0;
+            return cross.lengthSqr() < epsilon && v1.dot(v2) > 0;
         }
 
         // 物品栏变动消息
@@ -316,7 +305,7 @@
             var config = MinecartVisualizerConfig.getInstance();
             if (preChangeInv == null) return;
 
-            MutableText detailLines = Text.empty();
+            MutableComponent detailLines = Component.empty();
             boolean hasVisibleChange = false;
 
             for (int i = 0; i < 5; i++) {
@@ -333,11 +322,11 @@
                 hasVisibleChange = true;
 
                 if (config.printInventory){
-                    detailLines.append(Text.literal("\n  ")
-                            .append(Text.literal(diff > 0 ? "(+) " : "(-) ").formatted(diff > 0 ? Formatting.GREEN : Formatting.RED))
-                            .append(item.getItemName().copy().formatted(Formatting.WHITE))
-                            .append(Text.literal(" x" + Math.abs(diff)).formatted(Formatting.GRAY))
-                            .append(Text.translatable("chat.minecartvisualizer.tracker.slot", i + 1).formatted(Formatting.DARK_AQUA)));
+                    detailLines.append(Component.literal("\n  ")
+                            .append(Component.literal(diff > 0 ? "(+) " : "(-) ").withStyle(diff > 0 ? ChatFormatting.GREEN : ChatFormatting.RED))
+                            .append(item.getItemName().copy().withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(" x" + Math.abs(diff)).withStyle(ChatFormatting.GRAY))
+                            .append(Component.translatable("chat.minecartvisualizer.tracker.slot", i + 1).withStyle(ChatFormatting.DARK_AQUA)));
                 }
             }
 
@@ -346,21 +335,21 @@
                 return;
             }
 
-            MutableText msg = Text.literal("■ ").withColor(trackerColor.getHex())
-                    .append(Text.literal("[" + uuid.toString().substring(0, 4) + "] ").formatted(Formatting.GRAY))
-                    .append(Text.translatable("chat.minecartvisualizer.tracker.collected", (lastChangeTick - firstChangeTick + 1)).formatted(Formatting.GOLD));
+            MutableComponent msg = Component.literal("■ ").withColor(trackerColor.getHex())
+                    .append(Component.literal("[" + uuid.toString().substring(0, 4) + "] ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.translatable("chat.minecartvisualizer.tracker.collected", (lastChangeTick - firstChangeTick + 1)).withStyle(ChatFormatting.GOLD));
 
             if (config.printPosition){
                 double dist = startPos.distanceTo(leastPos);
-                MutableText posText;
+                MutableComponent posText;
 
                 if (dist > 1) {
                     String moveStr = String.format(" (%.1f, %.1f -> %.1f, %.1f)",
                             startPos.x, startPos.z, leastPos.x, leastPos.z);
-                    posText = Text.literal(moveStr);
+                    posText = Component.literal(moveStr);
                 } else {
                     String atStr = String.format("(%.1f, %.1f)", leastPos.x, leastPos.z);
-                    posText = Text.literal(atStr);
+                    posText = Component.literal(atStr);
                 }
 
                 String tpCommand = String.format("/tp @s %.1f %.1f %.1f",
@@ -368,18 +357,18 @@
                         dist > 1 ? leastPos.y : startPos.y,
                         dist > 1 ? leastPos.z : startPos.z);
 
-                posText.formatted(Formatting.DARK_AQUA)
-                        .styled(style -> style
+                posText.withStyle(ChatFormatting.DARK_AQUA)
+                        .withStyle(style -> style
                                 .withClickEvent(new ClickEvent.SuggestCommand(tpCommand))
                                 .withHoverEvent(new HoverEvent.ShowText(
-                                        Text.translatable("chat.minecartvisualizer.tracker.tp_hover")
+                                        Component.translatable("chat.minecartvisualizer.tracker.tp_hover")
                                 ))
                         );
 
                 msg.append(posText);
             }
             msg.append(detailLines);
-            player.sendMessage(msg, false);
+            player.sendSystemMessage(msg);
 
             resetTrackingState();
         }
@@ -387,10 +376,10 @@
         //矿车摧毁（使用服务端补发的最终坐标与最终物品栏）
         private void sendDestroyedMessage(List<ItemStack> finalInv) {
             var config = MinecartVisualizerConfig.getInstance();
-            MutableText message = Text.literal("■ ").withColor(trackerColor.getHex());
+            MutableComponent message = Component.literal("■ ").withColor(trackerColor.getHex());
 
-            message.append(Text.literal("[" + uuid.toString().substring(0, 4) + "] ").formatted(Formatting.GRAY));
-            message.append(Text.translatable("chat.minecartvisualizer.tracker.removed").formatted(Formatting.RED));
+            message.append(Component.literal("[" + uuid.toString().substring(0, 4) + "] ").withStyle(ChatFormatting.GRAY));
+            message.append(Component.translatable("chat.minecartvisualizer.tracker.removed").withStyle(ChatFormatting.RED));
 
             if (config.printPosition){
                 if (leastPos != null) {
@@ -398,16 +387,16 @@
 
                     String displayStr = String.format("(%.1f, %.1f, %.1f)", leastPos.x, leastPos.y, leastPos.z);
 
-                    message.append(Text.literal(displayStr)
-                            .formatted(Formatting.WHITE, Formatting.UNDERLINE)
-                            .styled(style -> style
+                    message.append(Component.literal(displayStr)
+                            .withStyle(ChatFormatting.WHITE, ChatFormatting.UNDERLINE)
+                            .withStyle(style -> style
                                     .withClickEvent(new ClickEvent.SuggestCommand("/tp @s " + posStr))
                                     .withHoverEvent(new HoverEvent.ShowText(
-                                            Text.translatable("chat.minecartvisualizer.tracker.tp_hover")
+                                            Component.translatable("chat.minecartvisualizer.tracker.tp_hover")
                                     ))
                             ));
                 } else {
-                    message.append(Text.translatable("chat.minecartvisualizer.tracker.unknown_location").formatted(Formatting.ITALIC));
+                    message.append(Component.translatable("chat.minecartvisualizer.tracker.unknown_location").withStyle(ChatFormatting.ITALIC));
                 }
             }
 
@@ -415,20 +404,20 @@
                 for (int i = 0; i < finalInv.size(); i++) {
                     ItemStack item = finalInv.get(i);
                     if (!item.isEmpty()) {
-                        MutableText itemLine = Text.literal("\n  ")
-                                .append(item.getItemName().copy().formatted(Formatting.WHITE))
-                                .append(Text.literal(" x" + item.getCount()).formatted(Formatting.GRAY))
-                                .append(Text.translatable("chat.minecartvisualizer.tracker.slot", i + 1).formatted(Formatting.DARK_AQUA));
+                        MutableComponent itemLine = Component.literal("\n  ")
+                                .append(item.getItemName().copy().withStyle(ChatFormatting.WHITE))
+                                .append(Component.literal(" x" + item.getCount()).withStyle(ChatFormatting.GRAY))
+                                .append(Component.translatable("chat.minecartvisualizer.tracker.slot", i + 1).withStyle(ChatFormatting.DARK_AQUA));
 
                         message.append(itemLine);
                     }
                 }
             }
             if (config.printDuration) {
-                message.append(Text.literal("\n  ")).append(Text.translatable("chat.minecartvisualizer.tracker.duration", runTime).formatted(Formatting.GOLD));
+                message.append(Component.literal("\n  ")).append(Component.translatable("chat.minecartvisualizer.tracker.duration", runTime).withStyle(ChatFormatting.GOLD));
             }
 
-            player.sendMessage(message, false);
+            player.sendSystemMessage(message);
         }
 
         private void recordCounterStats(List<ItemStack> items, RecordType type, List<ItemStack> previousItems) {
@@ -446,7 +435,7 @@
                     int diff = current.getCount() - old.getCount();
                     if (diff == 0) continue;
 
-                    if (ItemStack.areItemsEqual(old, current)) {
+                    if (ItemStack.isSameItem(old, current)) {
                         counter.addCounterData(current.getItemName(), diff, type);
                     } else {
                         if (!old.isEmpty()) counter.addCounterData(old.getItemName(), -old.getCount(), type);
@@ -468,7 +457,6 @@
             startPos = null;
         }
 
-
         private List<ItemStack> copyInventory(List<ItemStack> original) {
             List<ItemStack> copy = new ArrayList<>(original.size());
             for (ItemStack stack : original) {
@@ -478,7 +466,7 @@
         }
 
         private boolean shouldOutput(ItemStack stack) {
-            String itemId = Registries.ITEM.getId(stack.getItem()).toString();
+            String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
 
             if (filter.enableWhiteList) {
                 return filter.whiteList.contains(itemId);
@@ -491,7 +479,6 @@
             return true;
         }
 
-
         public TrackerColor getTrackerColor(){
             return trackerColor;
         }
@@ -500,7 +487,7 @@
             return shortUuid;
         }
 
-        public Deque<Vec3d> getTrailPoints() {
+        public Deque<Vec3> getTrailPoints() {
             return trailPoints;
         }
 
