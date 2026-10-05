@@ -108,12 +108,6 @@ public class TrackerCounter {
         destroyedDrops.clear();
     }
 
-    /**
-     * 按服务端 tick 累计统计时长。
-     *
-     * <p>原来按客户端 tick 累加，客户端卡顿、掉帧或单机暂停都会让"RunTime / 每小时速率"
-     * 与真实进度不一致；现在以服务端下发的时间为准，服务端没在广播时就不推进。</p>
-     */
     public void tick() {
         if (!enable) return;
         long serverTime = MinecartClientHandler.getLatestServerTime();

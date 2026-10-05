@@ -31,7 +31,6 @@ import java.util.UUID;
 
 import static com.minecartvisualizer.InfoRenderer.getAdaptiveColumns;
 
-
 @Mixin(WorldRenderer.class)
 public abstract class WorldRenderMixin {
 
@@ -150,7 +149,6 @@ public abstract class WorldRenderMixin {
         }
     }
 
-    /** 按配置决定吸取范围框是置顶渲染还是跟随实体渲染流程绘制。 */
     @Unique
     private static void queueOrRenderHopperRanges(MinecartVisualizerConfig config, Entity entity, Vec3d hopperPos,
                                                   double cameraX, double cameraY, double cameraZ,
