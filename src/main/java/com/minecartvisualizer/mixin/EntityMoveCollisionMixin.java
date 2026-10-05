@@ -11,16 +11,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * 方块碰撞（矿车被方块挤住）的监测点。
- *
- * <p>1.21.11 的 {@code AbstractMinecartEntity} 自己覆写了 {@code move(MovementType, Vec3d)}，
- * 所以在那边可以直接挂在矿车类上；1.21.1 的 {@code AbstractMinecartEntity} 没有覆写，
- * 矿车走的是继承自 {@code Entity} 的 {@code move}。挂在矿车类上既解析不到方法
- * （Loom 无法重映射继承方法，会留下未重映射的 "move"，正式环境注入失败），
- * 语义也不对，因此这里改为挂在 {@code Entity} 上，并用 instanceof 限定只观察矿车，
- * 写法与 {@link EntityPushAwayFromMixin} 保持一致。</p>
- */
 @Mixin(Entity.class)
 public abstract class EntityMoveCollisionMixin {
 

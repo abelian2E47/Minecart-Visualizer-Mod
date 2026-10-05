@@ -10,16 +10,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * 实体碰撞（推挤）的监测点。
- *
- * <p>1.21.1 的 {@code AbstractMinecartEntity} 同样覆写了 {@code pushAwayFrom(Entity)}，
- * 所以这一半可以像 1.21.11 一样直接挂在矿车类上。</p>
- *
- * <p>注意：1.21.11 里 {@code move(MovementType, Vec3d)} 的两个注入点原本也在这个类里，
- * 但 1.21.1 的 {@code AbstractMinecartEntity} 没有覆写 {@code move}（只继承 {@code Entity} 的），
- * 挂在这里会解析不到方法，已改到 {@link EntityMoveCollisionMixin}。</p>
- */
 @Mixin(AbstractMinecartEntity.class)
 public abstract class MinecartCollisionMixin {
 

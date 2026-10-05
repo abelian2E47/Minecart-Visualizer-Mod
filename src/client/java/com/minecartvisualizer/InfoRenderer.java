@@ -30,7 +30,6 @@ import java.util.Iterator;
 import java.util.Optional;
 import java.util.List;
 
-
 public class InfoRenderer {
     public static boolean getCustomRenderLayer;
 
@@ -44,10 +43,6 @@ public class InfoRenderer {
         renderTextLayer(infoTexts, textRenderer, matrix4f, vertexConsumer, startY, false, textColor);
     }
 
-    /**
-     * 计算悬浮信息文本的最终姿态（相机相对坐标）。抽出来是为了让"置顶渲染"能在置顶阶段复用同一套变换，
-     * 保证文本在两种渲染方式下的位置、朝向完全一致。
-     */
     private static Matrix4f buildTextPose(Entity entity, MatrixStack matrices) {
         var config = MinecartVisualizerConfig.getInstance();
         float baseHeight = entity.getHeight() + 0.5f;
@@ -191,10 +186,6 @@ public class InfoRenderer {
     private static final List<QueuedWorldBox> queuedWorldBoxes = new ArrayList<>();
     private static final List<QueuedInfoTexts> queuedInfoTexts = new ArrayList<>();
 
-    /**
-     * 悬浮信息文本的置顶路径：开关开启时不直接画，而是连同当前姿态入队，
-     * 由置顶阶段（清空深度之后）统一绘制，从而无视方块遮挡。
-     */
     public static void queueInfoTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, int textColor) {
         if (infoTexts.isEmpty()) {
             return;
@@ -222,24 +213,15 @@ public class InfoRenderer {
         }
     }
 
-    /**
-     * 待置顶绘制的吸取对象轮廓。
-     *
-     * @param shape  轮廓形状，位于 {@code origin} 处的局部坐标系中
-     * @param origin 形状局部坐标系原点的世界坐标
-     * @param scale  以轮廓中心为基准的缩放
-     */
     private record QueuedExtractionTarget(VoxelShape shape, Vec3d origin, float scale) {
     }
 
-    /** 待置顶绘制的世界坐标框。 */
     private record QueuedWorldBox(Box box, float scale, float[] color) {
     }
 
     private record QueuedInfoTexts(List<MutableText> texts, Matrix4f pose, int textColor) {
     }
 
-    /** 开始一帧的渲染：清空上一帧残留的置顶渲染内容。 */
     public static void beginTopRenderFrame() {
         queuedExtractionTargets.clear();
         queuedWorldBoxes.clear();
@@ -250,12 +232,10 @@ public class InfoRenderer {
         return !queuedExtractionTargets.isEmpty() || !queuedWorldBoxes.isEmpty() || !queuedInfoTexts.isEmpty();
     }
 
-    /** 把吸取范围框加入置顶渲染队列（在实体渲染阶段调用）。 */
     public static void queueWorldBox(Box box, float scale, float[] color) {
         queuedWorldBoxes.add(new QueuedWorldBox(box, scale, color));
     }
 
-    /** 绘制并清空队列中的吸取范围框。 */
     public static void renderQueuedWorldBoxes() {
         if (queuedWorldBoxes.isEmpty()) return;
 
@@ -277,7 +257,6 @@ public class InfoRenderer {
         queuedWorldBoxes.clear();
     }
 
-    /** 绘制并清空队列中的吸取对象轮廓。 */
     public static void renderQueuedExtractionTargets() {
         if (queuedExtractionTargets.isEmpty()) return;
 
@@ -309,21 +288,6 @@ public class InfoRenderer {
         queuedExtractionTargets.clear();
     }
 
-    /**
-     * 构建漏斗矿车的两个吸取范围框（世界坐标），元素 0 为掉落物吸取范围，元素 1 为上方输入区域。
-     *
-     * <p>两者都直接对应原版代码里实际用于搜索物品实体的区域：</p>
-     * <ul>
-     *     <li>{@code HopperMinecartEntity#canOperate()} 用
-     *     {@code getBoundingBox().expand(0.25, 0.0, 0.25)} 搜索周围的掉落物；</li>
-     *     <li>{@code HopperBlockEntity#getInputItemEntities()} 用
-     *     {@code Hopper.INPUT_AREA_SHAPE.offset(hopperX - 0.5, hopperY - 0.5, hopperZ - 0.5)}，
-     *     即 1×1、从 +11/16 格到 +2 格的柱体，搜索上方掉落的物品实体。</li>
-     * </ul>
-     *
-     * @param entity   漏斗矿车（仅用于取碰撞箱尺寸）
-     * @param hopperPos 服务端权威的矿车坐标，即原版 {@code getHopperX/Y/Z} 的 getX/getY/getZ
-     */
     public static Box[] buildHopperRangeBoxes(Entity entity, Vec3d hopperPos) {
         Box pickupBox = entity.getBoundingBox().offset(
                 hopperPos.x - entity.getX(), hopperPos.y - entity.getY(), hopperPos.z - entity.getZ()
@@ -336,7 +300,6 @@ public class InfoRenderer {
         return new Box[]{pickupBox, inputAreaBox};
     }
 
-    /** 直接在当前渲染流程中绘制吸取范围框（不置顶）。 */
     public static void renderHopperRanges(Entity entity, Vec3d hopperPos, double cameraX, double cameraY, double cameraZ,
                                           MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                           float[] pickupColor, float[] extractionColor, float scale) {
@@ -349,22 +312,6 @@ public class InfoRenderer {
                 extractionColor[0], extractionColor[1], extractionColor[2], 0.8f);
     }
 
-    /**
-     * 高亮服务端算出的"这一 tick 真正会被吸取的对象"。
-     *
-     * <p>目标由服务端按原版 {@code HopperBlockEntity#extract(World, Hopper)} 的口径算好后
-     * 随数据一起下发（方块：{@code BlockPos.ofFloored(hopperX, hopperY + 1.0, hopperZ)}；
-     * 实体：以 {@code (hopperX, hopperY + 1.0, hopperZ)} 为中心、半径 0.5 的立方体内的容器实体）。
-     * 客户端只负责画形状，不再用客户端世界去猜——客户端区块/实体同步可能滞后，
-     * 远距离时甚至没有区块数据，猜出来的目标与真实吸取对象不一致。</p>
-     *
-     * <p>方块以自身的轮廓形状入队（与原版方块描边一致），因此形状不是完整方块的容器
-     * （漏斗、堆肥桶、饰纹陶罐等）也能画出完整轮廓线。</p>
-     *
-     * @param hopperData 服务端下发的漏斗矿车数据（含吸取目标）
-     * @param scale      以轮廓中心为基准的缩放
-     * @return 是否至少高亮了一个吸取目标
-     */
     public static boolean queueExtractionTargets(HopperMinecartDataPayload hopperData, float scale) {
         if (hopperData == null) {
             return false;
@@ -400,9 +347,6 @@ public class InfoRenderer {
         return hasTarget;
     }
 
-    /**
-     * 绘制形状的完整轮廓线（遍历形状的每一条边），并以轮廓中心为基准缩放。
-     */
     private static void drawScaledOutline(MatrixStack matrices, VertexConsumer lines, VoxelShape shape,
                                           double offsetX, double offsetY, double offsetZ,
                                           float scale, int argb) {
@@ -425,7 +369,6 @@ public class InfoRenderer {
         matrices.pop();
     }
 
-    /** 以框的中心为基准缩放后绘制。 */
     private static void drawScaledBox(MatrixStack matrices, VertexConsumer lines, Box viewBox, float scale, float r, float g, float b, float a) {
         matrices.push();
 
@@ -446,10 +389,6 @@ public class InfoRenderer {
         matrices.pop();
     }
 
-    /**
-     * 渲染轨迹：默认沿用追踪器的染料颜色；
-     * 当配置为不使用染料颜色（或未指定颜色）时，使用配置中的固定颜色。
-     */
     public static void renderTrail(HopperMinecartTracker tracker,
                                    MatrixStack matrices, VertexConsumer lineConsumer) {
         var config = MinecartVisualizerConfig.getInstance();
@@ -468,7 +407,6 @@ public class InfoRenderer {
         renderTrail(tracker.getTrailPoints(), matrices, lineConsumer, r, g, b);
     }
 
-    /** 使用指定的固定颜色渲染轨迹。 */
     public static void renderTrail(Collection<Vec3d> points,
                                    MatrixStack matrices, VertexConsumer lineConsumer,
                                    float r, float g, float b) {
@@ -626,7 +564,6 @@ public class InfoRenderer {
         drawBox(matrices, lines, standardBox.expand(0.005), r, g, b, a);
     }
 
-    /** 1.21.1 没有 VertexRendering，这里按同样的方式绘制形状轮廓。 */
     private static void drawShapeOutline(MatrixStack matrices, VertexConsumer lines, VoxelShape shape,
                                          double offsetX, double offsetY, double offsetZ, int argb) {
         MatrixStack.Entry entry = matrices.peek();
@@ -644,12 +581,6 @@ public class InfoRenderer {
         WorldRenderer.drawBox(matrices, vertexConsumer, box, red, green, blue, alpha);
     }
 
-    /**
-     * 取矿车的服务端权威坐标（两个服务端 tick 之间按渲染 tick 插值）。
-     *
-     * <p>没有收到服务端坐标（例如服务端未安装本模组，或同步尚未到达）时返回 {@code null}，
-     * 调用方应回退到客户端的插值坐标。</p>
-     */
     public static Vec3d getAuthoritativePos(Entity entity, float tickDelta) {
         Vec3d serverPos = MinecartClientHandler.getServerPos(entity.getUuid(), tickDelta);
         if (serverPos == null) {
@@ -667,7 +598,6 @@ public class InfoRenderer {
         return serverPos;
     }
 
-    /** 服务端坐标不可用时的回退：客户端插值坐标。 */
     public static Vec3d getClientPos(Entity entity, float tickDelta) {
         return new Vec3d(
                 MathHelper.lerp(tickDelta, entity.lastRenderX, entity.getX()),

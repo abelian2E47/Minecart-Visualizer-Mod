@@ -465,14 +465,6 @@ public class MinecartVisualizerConfigScreen {
                 .build();
     }
 
-    /**
-     * 创建一个带取色器的颜色选项。
-     *
-     * @param nameKey 语言键
-     * @param fallback 默认颜色，同时作为旧配置缺少该字段时的回退值
-     * @param getter  读取配置里的颜色
-     * @param setter  写回配置里的颜色
-     */
     private static Option<Color> createColorOption(String nameKey, Color fallback,
                                                    Function<MinecartVisualizerConfig, Color> getter,
                                                    BiConsumer<MinecartVisualizerConfig, Color> setter) {

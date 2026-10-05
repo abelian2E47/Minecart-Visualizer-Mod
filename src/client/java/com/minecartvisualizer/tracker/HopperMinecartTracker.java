@@ -125,7 +125,6 @@
             }
         }
 
-        /** 服务端通知矿车已被销毁：用服务端补发的最后一份数据出报告。 */
         private void handleRemoval(MinecartClientHandler.RemovalNotice removal, MinecartVisualizerConfig config) {
             MinecartDataPayload finalData = removal.data();
             if (finalData != null) {
@@ -152,13 +151,6 @@
             this.removed = true;
         }
 
-        /**
-         * 输出服务端上报的"被挤压"事件。
-         *
-         * <p>服务端已经判定过"确实因碰撞损失了动量"，这里再做三件服务端做不了的事：
-         * 按客户端自己的阈值丢掉轻微挤压、按冷却限制同一台矿车的消息频率，
-         * 以及按配置决定消息里出现哪些字段。</p>
-         */
         private void handleCollisions(MinecartVisualizerConfig config) {
             if (!config.outputOnCollision) {
                 //关闭时也要把队列排空，否则重新打开会把关闭期间的历史事件一次性涌出来
@@ -241,7 +233,6 @@
             player.sendMessage(message, false);
         }
 
-        /** 方块注册名转成游戏内显示名；查不到就原样输出注册名。 */
         private Text blockDisplayName(String targetId) {
             Identifier id = Identifier.tryParse(targetId);
             if (id != null && Registries.BLOCK.containsId(id)) {
@@ -250,7 +241,6 @@
             return Text.literal(targetId);
         }
 
-        /** 实体注册名转成显示名；有自定义名称时额外附上（按服务端下发的原文）。 */
         private Text entityDisplayName(MinecartCollisionPayload collision) {
             Identifier id = Identifier.tryParse(collision.targetId());
             Text base = (id != null && Registries.ENTITY_TYPE.containsId(id))
@@ -461,7 +451,6 @@
             startPos = null;
         }
 
-
         private List<ItemStack> copyInventory(List<ItemStack> original) {
             List<ItemStack> copy = new ArrayList<>(original.size());
             for (ItemStack stack : original) {
@@ -483,7 +472,6 @@
 
             return true;
         }
-
 
         public TrackerColor getTrackerColor(){
             return trackerColor;
