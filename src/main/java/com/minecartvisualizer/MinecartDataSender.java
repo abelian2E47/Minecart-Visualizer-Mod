@@ -1,5 +1,6 @@
 package com.minecartvisualizer;
 
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.InventoryProvider;
@@ -9,10 +10,11 @@ import net.minecraft.entity.vehicle.HopperMinecartEntity;
 import net.minecraft.entity.vehicle.TntMinecartEntity;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.predicate.entity.EntityPredicates;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
@@ -66,8 +68,12 @@ public final class MinecartDataSender {
         );
 
         double distance = removed ? REMOVAL_SEND_DISTANCE : SEND_DISTANCE;
-        sendToNearby(serverWorld, cart, distance, MinecartDataPayload.ID,
-                player -> ServerPlayNetworking.send(player, payload));
+        sendToNearby(serverWorld, cart, distance, MinecartVisualizer.MINECART_DATA_PACKET_ID,
+                player -> {
+                    PacketByteBuf buf = PacketByteBufs.create();
+                    MinecartDataPayload.write(buf, payload);
+                    ServerPlayNetworking.send(player, MinecartVisualizer.MINECART_DATA_PACKET_ID, buf);
+                });
     }
 
     /** 下发一次漏斗矿车状态（物品栏、是否可用、服务端算出的吸取目标）。 */
@@ -87,8 +93,12 @@ public final class MinecartDataSender {
         HopperMinecartDataPayload payload = new HopperMinecartDataPayload(
                 uuid, enable, items, findExtractionBlock(cart), findExtractionEntities(cart));
 
-        sendToNearby(serverWorld, cart, SEND_DISTANCE, HopperMinecartDataPayload.ID,
-                player -> ServerPlayNetworking.send(player, payload));
+        sendToNearby(serverWorld, cart, SEND_DISTANCE, MinecartVisualizer.HOPPER_MINECART_DATA_PACKET_ID,
+                player -> {
+                    PacketByteBuf buf = PacketByteBufs.create();
+                    HopperMinecartDataPayload.write(buf, payload);
+                    ServerPlayNetworking.send(player, MinecartVisualizer.HOPPER_MINECART_DATA_PACKET_ID, buf);
+                });
     }
 
     /** 下发一次 TNT 矿车状态（引信、抖动强度）。 */
@@ -100,8 +110,12 @@ public final class MinecartDataSender {
         TNTMinecartDataPayload payload = new TNTMinecartDataPayload(
                 cart.getUuid(), cart.getFuseTicks(), false, Vec3d.ZERO, cart.getDamageWobbleStrength());
 
-        sendToNearby(serverWorld, cart, SEND_DISTANCE, TNTMinecartDataPayload.ID,
-                player -> ServerPlayNetworking.send(player, payload));
+        sendToNearby(serverWorld, cart, SEND_DISTANCE, MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID,
+                player -> {
+                    PacketByteBuf buf = PacketByteBufs.create();
+                    TNTMinecartDataPayload.write(buf, payload);
+                    ServerPlayNetworking.send(player, MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID, buf);
+                });
     }
 
     /** 一次性爆炸事件：发给更远的玩家（原版爆炸可见范围更大）。 */
@@ -113,16 +127,24 @@ public final class MinecartDataSender {
         TNTMinecartDataPayload payload = new TNTMinecartDataPayload(
                 cart.getUuid(), 0, true, cart.getPos(), 0.0f);
 
-        sendToNearby(serverWorld, cart, 64.0, TNTMinecartDataPayload.ID,
-                player -> ServerPlayNetworking.send(player, payload));
+        sendToNearby(serverWorld, cart, 64.0, MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID,
+                player -> {
+                    PacketByteBuf buf = PacketByteBufs.create();
+                    TNTMinecartDataPayload.write(buf, payload);
+                    ServerPlayNetworking.send(player, MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID, buf);
+                });
     }
 
     public static void sendCollision(MinecartCollisionPayload payload, Entity source) {
         if (source.getWorld().isClient()) return;
 
         ServerWorld serverWorld = (ServerWorld) source.getWorld();
-        sendToNearby(serverWorld, source, SEND_DISTANCE, MinecartCollisionPayload.ID,
-                player -> ServerPlayNetworking.send(player, payload));
+        sendToNearby(serverWorld, source, SEND_DISTANCE, MinecartVisualizer.MINECART_COLLISION_PACKET_ID,
+                player -> {
+                    PacketByteBuf buf = PacketByteBufs.create();
+                    MinecartCollisionPayload.write(buf, payload);
+                    ServerPlayNetworking.send(player, MinecartVisualizer.MINECART_COLLISION_PACKET_ID, buf);
+                });
     }
 
     /** 矿车被真正销毁时补发最后一份数据（带 {@code removed} 标记）。 */
@@ -179,7 +201,7 @@ public final class MinecartDataSender {
     }
 
     private static void sendToNearby(ServerWorld world, Entity source, double distance,
-                                     CustomPayload.Id<?> payloadId, Consumer<ServerPlayerEntity> sender) {
+                                     Identifier payloadId, Consumer<ServerPlayerEntity> sender) {
         double squared = distance * distance;
         world.getPlayers(player -> player.squaredDistanceTo(source) < squared).forEach(player -> {
             if (ServerPlayNetworking.canSend(player, payloadId)) {

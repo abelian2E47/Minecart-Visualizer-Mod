@@ -16,7 +16,6 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -176,7 +175,7 @@ public abstract class WorldRenderMixin {
             )
     )
     private void beginTopRenderFrame(
-            RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
+            MatrixStack matrices, float tickDelta, long limitTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f projectionMatrix, CallbackInfo ci
     ) {
         InfoRenderer.beginTopRenderFrame();
     }
@@ -188,16 +187,16 @@ public abstract class WorldRenderMixin {
             )
     )
     private void renderQueuedTopRenderContent(
-            RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
+            MatrixStack matrices, float tickDelta, long limitTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f projectionMatrix, CallbackInfo ci
     ) {
         if (!InfoRenderer.hasQueuedTopRenderContent()) {
             return;
         }
 
         //此时的模型视图矩阵已被原版弹出，需要自行设置世界相机变换
-        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
-        modelViewStack.pushMatrix();
-        modelViewStack.mul(matrix4f);
+        MatrixStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.push();
+        modelViewStack.multiplyPositionMatrix(projectionMatrix);
         //关闭深度测试，让线框无视深度绘制在最上层
         RenderSystem.disableDepthTest();
         try {
@@ -207,7 +206,7 @@ public abstract class WorldRenderMixin {
             InfoRenderer.renderQueuedInfoTexts();
         } finally {
             RenderSystem.enableDepthTest();
-            modelViewStack.popMatrix();
+            modelViewStack.pop();
         }
     }
 
@@ -218,7 +217,7 @@ public abstract class WorldRenderMixin {
             )
     )
     private void renderTrails(
-            RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
+            MatrixStack matrices, float tickDelta, long limitTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f projectionMatrix, CallbackInfo ci
     ) {
         var config = MinecartVisualizerConfig.getInstance();
         if (config.trackMinecartTrail){
@@ -226,11 +225,11 @@ public abstract class WorldRenderMixin {
             VertexConsumer lineConsumer = consumers.getBuffer(RenderLayer.LINES);
 
             Vec3d camPos = camera.getPos();
-            MatrixStack matrices = new MatrixStack();
-            matrices.translate(-camPos.x, -camPos.y, -camPos.z);
+            MatrixStack trailMatrices = new MatrixStack();
+            trailMatrices.translate(-camPos.x, -camPos.y, -camPos.z);
 
             for (HopperMinecartTracker tracker : TrackersManager.getAllTrackers()) {
-                InfoRenderer.renderTrail(tracker, matrices, lineConsumer);
+                InfoRenderer.renderTrail(tracker, trailMatrices, lineConsumer);
             }
         }
     }
@@ -240,7 +239,7 @@ public abstract class WorldRenderMixin {
             at = @At(value = "HEAD")
     )
     private void renderTriggerPoints(
-            RenderTickCounter tickCounter, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f matrix4f, Matrix4f matrix4f2, CallbackInfo ci
+            MatrixStack matrices, float tickDelta, long limitTime, boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer, LightmapTextureManager lightmapTextureManager, Matrix4f projectionMatrix, CallbackInfo ci
     ) {
         Map<BlockPos, PointState> trackerPoints = TrackerPointsManager.getPoints();
         if (trackerPoints.isEmpty()) return;
@@ -249,14 +248,14 @@ public abstract class WorldRenderMixin {
         VertexConsumer lineConsumer = consumers.getBuffer(RenderLayer.LINES);
 
         Vec3d camPos = camera.getPos();
-        MatrixStack matrices = new MatrixStack();
-        matrices.translate(-camPos.x, -camPos.y, -camPos.z);
+        MatrixStack pointMatrices = new MatrixStack();
+        pointMatrices.translate(-camPos.x, -camPos.y, -camPos.z);
 
         for (Map.Entry<BlockPos, PointState> entry : trackerPoints.entrySet()) {
             BlockPos pos = entry.getKey();
 
             InfoRenderer.drawTrackerPointBox(
-                    matrices,
+                    pointMatrices,
                     lineConsumer,
                     entry.getValue().getColor(),
                     pos,

@@ -2,10 +2,7 @@ package com.minecartvisualizer;
 
 import net.fabricmc.api.ModInitializer;
 
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.util.Identifier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 public class MinecartVisualizer implements ModInitializer {
@@ -17,9 +14,6 @@ public class MinecartVisualizer implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		PayloadTypeRegistry.playS2C().register(MinecartDataPayload.ID, MinecartDataPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(HopperMinecartDataPayload.ID, HopperMinecartDataPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(TNTMinecartDataPayload.ID,TNTMinecartDataPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(MinecartCollisionPayload.ID, MinecartCollisionPayload.CODEC);
+		//1.20.x 的自定义通道直接用 Identifier 标识，不需要像 1.21.1 那样先注册 payload 类型
 	}
 }

@@ -214,58 +214,72 @@ public class MinecartClientHandler {
 
         hopperMinecarts.sort(Comparator.comparingInt(Entity::getId));
 
-        return hopperMinecarts.getFirst().getUuid();
+        //1.20.4 最低支持 Java 17，没有 List#getFirst()
+        return hopperMinecarts.get(0).getUuid();
     }
 
     public static void register() {
         var config = MinecartVisualizerConfig.getInstance();
 
-        ClientPlayNetworking.registerGlobalReceiver(MinecartDataPayload.ID, (payload, context) -> MinecraftClient.getInstance().execute(() -> {
-            if (payload.serverTime() > latestServerTime) {
-                latestServerTime = payload.serverTime();
-            }
-
-            if (payload.removed()) {
-                //服务端说它被销毁了：留下最后一份数据（连同刚到的漏斗矿车快照）给追踪器出报告，
-                //然后清掉实时数据，后面的显示不再引用它
-                REMOVED_DATA.put(payload.uuid(),
-                        new RemovalNotice(payload, HOPPER_MINECART_DATA.get(payload.uuid())));
-                dropLiveData(payload.uuid());
-                return;
-            }
-
-            MINECART_DATA.put(payload.uuid(), payload);
-            LAST_UPDATE_MS.put(payload.uuid(), Util.getMeasuringTimeMs());
-            minecarts.put(payload.uuid(), BlockPos.ofFloored(payload.pos()));
-            recordServerPos(payload.uuid(), payload.pos());
-        }));
-
-        ClientPlayNetworking.registerGlobalReceiver(HopperMinecartDataPayload.ID,
-                (payload, context) -> MinecraftClient.getInstance().execute(() -> HOPPER_MINECART_DATA.put(payload.uuid(), payload)));
-
-        ClientPlayNetworking.registerGlobalReceiver(MinecartCollisionPayload.ID,
-                (payload, context) -> MinecraftClient.getInstance().execute(() -> {
-                    Deque<MinecartCollisionPayload> queue =
-                            COLLISION_NOTICES.computeIfAbsent(payload.uuid(), uuid -> new ConcurrentLinkedDeque<>());
-                    queue.addLast(payload);
-                    while (queue.size() > MAX_COLLISION_NOTICES) {
-                        queue.pollFirst();
-                    }
-                }));
-
-        ClientPlayNetworking.registerGlobalReceiver(TNTMinecartDataPayload.ID,
-                (payload, context) -> MinecraftClient.getInstance().execute(() -> {
-                    TNT_MINECART_DATA.put(payload.uuid(), payload);
-                    if (payload.isExploded() && config.trackTNTMinecart) {
-                        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-                        Text headText = Text.literal("[Exploded]").setStyle(Style.EMPTY.withColor(0x8FBF3A));
-                        Text posText = Text.literal("At" + payload.explosionPos().toString()).setStyle(Style.EMPTY.withColor(0xDE2E6E));
-                        Text message = headText.copy().append(posText);
-                        if (player != null) {
-                            player.sendMessage(message, false);
+        ClientPlayNetworking.registerGlobalReceiver(MinecartVisualizer.MINECART_DATA_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    MinecartDataPayload payload = MinecartDataPayload.read(buf);
+                    client.execute(() -> {
+                        if (payload.serverTime() > latestServerTime) {
+                            latestServerTime = payload.serverTime();
                         }
-                    }
-                }));
+
+                        if (payload.removed()) {
+                            //服务端说它被销毁了：留下最后一份数据（连同刚到的漏斗矿车快照）给追踪器出报告，
+                            //然后清掉实时数据，后面的显示不再引用它
+                            REMOVED_DATA.put(payload.uuid(),
+                                    new RemovalNotice(payload, HOPPER_MINECART_DATA.get(payload.uuid())));
+                            dropLiveData(payload.uuid());
+                            return;
+                        }
+
+                        MINECART_DATA.put(payload.uuid(), payload);
+                        LAST_UPDATE_MS.put(payload.uuid(), Util.getMeasuringTimeMs());
+                        minecarts.put(payload.uuid(), BlockPos.ofFloored(payload.pos()));
+                        recordServerPos(payload.uuid(), payload.pos());
+                    });
+                });
+
+        ClientPlayNetworking.registerGlobalReceiver(MinecartVisualizer.HOPPER_MINECART_DATA_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    HopperMinecartDataPayload payload = HopperMinecartDataPayload.read(buf);
+                    client.execute(() -> HOPPER_MINECART_DATA.put(payload.uuid(), payload));
+                });
+
+        ClientPlayNetworking.registerGlobalReceiver(MinecartVisualizer.MINECART_COLLISION_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    MinecartCollisionPayload payload = MinecartCollisionPayload.read(buf);
+                    client.execute(() -> {
+                        Deque<MinecartCollisionPayload> queue =
+                                COLLISION_NOTICES.computeIfAbsent(payload.uuid(), uuid -> new ConcurrentLinkedDeque<>());
+                        queue.addLast(payload);
+                        while (queue.size() > MAX_COLLISION_NOTICES) {
+                            queue.pollFirst();
+                        }
+                    });
+                });
+
+        ClientPlayNetworking.registerGlobalReceiver(MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    TNTMinecartDataPayload payload = TNTMinecartDataPayload.read(buf);
+                    client.execute(() -> {
+                        TNT_MINECART_DATA.put(payload.uuid(), payload);
+                        if (payload.isExploded() && config.trackTNTMinecart) {
+                            ClientPlayerEntity player = MinecraftClient.getInstance().player;
+                            Text headText = Text.literal("[Exploded]").setStyle(Style.EMPTY.withColor(0x8FBF3A));
+                            Text posText = Text.literal("At" + payload.explosionPos().toString()).setStyle(Style.EMPTY.withColor(0xDE2E6E));
+                            Text message = headText.copy().append(posText);
+                            if (player != null) {
+                                player.sendMessage(message, false);
+                            }
+                        }
+                    });
+                });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.world == null) return;

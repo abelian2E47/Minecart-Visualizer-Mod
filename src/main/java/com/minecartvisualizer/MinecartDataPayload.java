@@ -1,8 +1,5 @@
 package com.minecartvisualizer;
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -22,51 +19,39 @@ import java.util.UUID;
  *     由服务端补发的最后一次数据，客户端据此判定"矿车被摧毁"，
  *     不再依据客户端实体列表（离开视距或区块卸载会被误判为摧毁）。</li>
  * </ul>
+ *
+ * <p>1.20.x 没有 {@code PacketCodec}，原来 {@code CODEC} 里的编码/解码逻辑
+ * 拆成同名的静态方法，字段顺序与 CODEC 中完全一致。</p>
  */
 public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double speed, float yaw, int id,
-                                  long serverTime, boolean removed) implements CustomPayload {
+                                  long serverTime, boolean removed) {
 
-    public static final Id<MinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.MINECART_DATA_PACKET_ID);
+    public static void write(PacketByteBuf buf, MinecartDataPayload payload) {
+        buf.writeUuid(payload.uuid());
+        buf.writeDouble(payload.pos().x);
+        buf.writeDouble(payload.pos().y);
+        buf.writeDouble(payload.pos().z);
+        buf.writeDouble(payload.velocity().x);
+        buf.writeDouble(payload.velocity().y);
+        buf.writeDouble(payload.velocity().z);
+        buf.writeDouble(payload.speed());
+        buf.writeFloat(payload.yaw());
+        buf.writeInt(payload.id());
+        buf.writeLong(payload.serverTime());
+        buf.writeBoolean(payload.removed());
+    }
 
-    public static final PacketCodec<ByteBuf, Vec3d> VEC3D_CODEC = PacketCodec.of(
-            (value, buf) -> {
-                buf.writeDouble(value.x);
-                buf.writeDouble(value.y);
-                buf.writeDouble(value.z);
-            },
-            buf -> new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble())
-    );
-
-    public static final PacketCodec<RegistryByteBuf, MinecartDataPayload> CODEC = PacketCodec.of(
-            (payload, buf) -> {
-                buf.writeUuid(payload.uuid());
-                buf.writeDouble(payload.pos().x);
-                buf.writeDouble(payload.pos().y);
-                buf.writeDouble(payload.pos().z);
-                buf.writeDouble(payload.velocity().x);
-                buf.writeDouble(payload.velocity().y);
-                buf.writeDouble(payload.velocity().z);
-                buf.writeDouble(payload.speed());
-                buf.writeFloat(payload.yaw());
-                buf.writeInt(payload.id());
-                buf.writeLong(payload.serverTime());
-                buf.writeBoolean(payload.removed());
-            },
-            buf -> new MinecartDataPayload(
-                    buf.readUuid(),
-                    new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
-                    new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
-                    buf.readDouble(),
-                    buf.readFloat(),
-                    buf.readInt(),
-                    buf.readLong(),
-                    buf.readBoolean()
-            )
-    );
-
-    @Override
-    public Id<? extends CustomPayload> getId() {
-        return ID;
+    public static MinecartDataPayload read(PacketByteBuf buf) {
+        return new MinecartDataPayload(
+                buf.readUuid(),
+                new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
+                buf.readDouble(),
+                buf.readFloat(),
+                buf.readInt(),
+                buf.readLong(),
+                buf.readBoolean()
+        );
     }
 
 

@@ -330,7 +330,9 @@ public class InfoRenderer {
         ).expand(0.25, 0.0, 0.25);
 
         // 漏斗矿车的 getHopperX/Y/Z 分别是 getX()、getY() + 0.5、getZ()
-        Box inputAreaBox = Hopper.INPUT_AREA_SHAPE.offset(
+        // 1.20.x 的 Hopper.INPUT_AREA_SHAPE 是 VoxelShape（1.21.1 起改成 Box），
+        // 这里取它的包围盒，等价于 union(INSIDE_SHAPE, ABOVE_SHAPE) 的外框
+        Box inputAreaBox = Hopper.INPUT_AREA_SHAPE.getBoundingBox().offset(
                 hopperPos.x - 0.5, hopperPos.y, hopperPos.z - 0.5);
 
         return new Box[]{pickupBox, inputAreaBox};
@@ -630,12 +632,15 @@ public class InfoRenderer {
     private static void drawShapeOutline(MatrixStack matrices, VertexConsumer lines, VoxelShape shape,
                                          double offsetX, double offsetY, double offsetZ, int argb) {
         MatrixStack.Entry entry = matrices.peek();
+        //1.20.4 的 VertexConsumer 没有接收 MatrixStack.Entry 的重载，直接用 entry 里的矩阵
+        Matrix4f positionMatrix = entry.getPositionMatrix();
+        org.joml.Matrix3f normalMatrix = entry.getNormalMatrix();
         shape.forEachEdge((x1, y1, z1, x2, y2, z2) -> {
             Vector3f normal = new Vector3f((float) (x2 - x1), (float) (y2 - y1), (float) (z2 - z1)).normalize();
-            lines.vertex(entry, (float) (x1 + offsetX), (float) (y1 + offsetY), (float) (z1 + offsetZ))
-                    .color(argb).normal(entry, normal.x(), normal.y(), normal.z());
-            lines.vertex(entry, (float) (x2 + offsetX), (float) (y2 + offsetY), (float) (z2 + offsetZ))
-                    .color(argb).normal(entry, normal.x(), normal.y(), normal.z());
+            lines.vertex(positionMatrix, (float) (x1 + offsetX), (float) (y1 + offsetY), (float) (z1 + offsetZ))
+                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z());
+            lines.vertex(positionMatrix, (float) (x2 + offsetX), (float) (y2 + offsetY), (float) (z2 + offsetZ))
+                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z());
         });
     }
 

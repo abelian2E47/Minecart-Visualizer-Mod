@@ -1,8 +1,6 @@
 package com.minecartvisualizer;
 
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
+import net.minecraft.network.PacketByteBuf;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
@@ -12,28 +10,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-public record TNTMinecartDataPayload(UUID uuid, int fuseTicks, boolean isExploded, Vec3d explosionPos, Float damageWobbleStrength) implements CustomPayload {
-    public static final Id<TNTMinecartDataPayload> ID = new CustomPayload.Id<>(MinecartVisualizer.TNT_MINECART_DATA_PACKET_ID);
+public record TNTMinecartDataPayload(UUID uuid, int fuseTicks, boolean isExploded, Vec3d explosionPos, Float damageWobbleStrength) {
 
-    @Override
-    public Id<? extends CustomPayload> getId() { return ID; }
+    public static void write(PacketByteBuf buf, TNTMinecartDataPayload payload) {
+        buf.writeUuid(payload.uuid);
+        buf.writeInt(payload.fuseTicks);
+        buf.writeBoolean(payload.isExploded);
+        buf.writeVec3d(payload.explosionPos);
+        buf.writeFloat(payload.damageWobbleStrength);
+    }
 
-    public static final PacketCodec<RegistryByteBuf, TNTMinecartDataPayload> CODEC = PacketCodec.of(
-            (payload, buf) -> {
-                buf.writeUuid(payload.uuid);
-                buf.writeInt(payload.fuseTicks);
-                buf.writeBoolean(payload.isExploded);
-                buf.writeVec3d(payload.explosionPos);
-                buf.writeFloat(payload.damageWobbleStrength);
-            },
-            buf -> new TNTMinecartDataPayload(
-                    buf.readUuid(),
-                    buf.readInt(),
-                    buf.readBoolean(),
-                    buf.readVec3d(),
-                    buf.readFloat()
-            )
-    );
+    public static TNTMinecartDataPayload read(PacketByteBuf buf) {
+        return new TNTMinecartDataPayload(
+                buf.readUuid(),
+                buf.readInt(),
+                buf.readBoolean(),
+                buf.readVec3d(),
+                buf.readFloat()
+        );
+    }
 
 
     public List<MutableText> getInfoTexts(boolean[] enableSettings){

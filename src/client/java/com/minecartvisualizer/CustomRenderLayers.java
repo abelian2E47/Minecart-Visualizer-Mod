@@ -20,7 +20,7 @@ public final class CustomRenderLayers {
      * {@code WorldRenderer#render} 内部就已被合成进主帧缓冲，因此在 {@code render} 末尾
      * 做置顶绘制时必须换掉这个目标。</p>
      *
-     * <p>1.21.1 的 {@code MAIN_TARGET} 本身不做任何事（不切换帧缓冲），所以调用方需要在
+     * <p>1.20.x 的 {@code MAIN_TARGET} 本身不做任何事（不切换帧缓冲），所以调用方需要在
      * 绘制前自行切回主帧缓冲。</p>
      */
     public static final RenderLayer LINES_ON_TOP = RenderLayer.of(

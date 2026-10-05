@@ -26,7 +26,8 @@ public class MinecartsGroup {
      */
     public void sort(Comparator<UUID> comparator) {
         minecarts.sort(comparator);
-        leader = minecarts.getFirst();
+        //1.20.4 最低支持 Java 17，没有 List#getFirst()
+        leader = minecarts.get(0);
     }
 
     public List<UUID> getMinecarts(){
