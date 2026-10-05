@@ -1,0 +1,22 @@
+accessWidener	v2	named
+
+# 1.20.x 的 yarn 把渲染层的组合类型声明为 protected / 包内私有，原版官方映射里它们是 public。
+# 这里只放宽访问权限、不改任何行为，以便继续按 1.21.1 的写法直接组合渲染层。
+accessible	class	net/minecraft/client/render/RenderLayer$MultiPhase
+accessible	class	net/minecraft/client/render/RenderLayer$MultiPhaseParameters
+accessible	class	net/minecraft/client/render/RenderLayer$MultiPhaseParameters$Builder
+
+accessible	class	net/minecraft/client/render/RenderPhase$Texture
+accessible	class	net/minecraft/client/render/RenderPhase$TextureBase
+accessible	class	net/minecraft/client/render/RenderPhase$ShaderProgram
+accessible	class	net/minecraft/client/render/RenderPhase$Transparency
+accessible	class	net/minecraft/client/render/RenderPhase$DepthTest
+accessible	class	net/minecraft/client/render/RenderPhase$Cull
+accessible	class	net/minecraft/client/render/RenderPhase$Lightmap
+accessible	class	net/minecraft/client/render/RenderPhase$Overlay
+accessible	class	net/minecraft/client/render/RenderPhase$Layering
+accessible	class	net/minecraft/client/render/RenderPhase$Target
+accessible	class	net/minecraft/client/render/RenderPhase$Texturing
+accessible	class	net/minecraft/client/render/RenderPhase$WriteMaskState
+accessible	class	net/minecraft/client/render/RenderPhase$LineWidth
+accessible	class	net/minecraft/client/render/RenderPhase$ColorLogic

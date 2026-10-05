@@ -25,6 +25,8 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	accessWidenerPath = file("src/main/resources/minecartvisualizer.accesswidener")
+
 	mods {
 		"minecartvisualizer" {
 			sourceSet sourceSets.main
@@ -48,7 +50,11 @@ dependencies {
 	modImplementation ("dev.isxander:yet-another-config-lib:${project.yacl_version}"){
 		exclude(group: "net.fabricmc.fabric-api")
 	}
-	modImplementation "com.terraformersmc:modmenu:${project.modmenu_version}"
+	modImplementation ("com.terraformersmc:modmenu:${project.modmenu_version}"){
+		// ModMenu 把运行时依赖都打包进了 META-INF/jars，编译期只需要它自己的 API
+		exclude(group: "eu.pb4")
+		exclude(group: "net.fabricmc.fabric-api")
+	}
 
 
 }
@@ -62,7 +68,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 21
+	it.options.release = 17
 }
 
 java {
@@ -71,8 +77,8 @@ java {
 	// If you remove this line, sources will not be generated.
 	withSourcesJar()
 
-	sourceCompatibility = JavaVersion.VERSION_21
-	targetCompatibility = JavaVersion.VERSION_21
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
 }
 
 jar {
