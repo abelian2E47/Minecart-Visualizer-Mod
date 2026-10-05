@@ -19,20 +19,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
-
-/**
- * 客户端保存的服务端权威数据。
- *
- * <p>所有显示都以这里的数据为准：数据本身由服务端每 tick 下发，并带上服务端时间戳；
- * 客户端只用它做插值显示与时效判定，不再拿客户端自己的世界状态去推算矿车的状态。</p>
- */
 public class MinecartClientHandler {
 
-    /** 数据超过这么多毫秒没有更新就视为失效（不再显示，也不参与统计）。 */
     public static final long MAX_FRESH_AGE_MS = 2000L;
-    /** 追踪中的矿车失去同步超过这么多毫秒后静默放弃（不算被摧毁）。 */
+    
     public static final long LOST_CONTACT_MS = 60000L;
-    /** 同一台矿车最多缓存多少条碰撞事件（没有追踪器消费时不会无限增长）。 */
+    
     private static final int MAX_COLLISION_NOTICES = 32;
 
     private static final Map<UUID, MinecartDataPayload> MINECART_DATA = new ConcurrentHashMap<>();
@@ -52,10 +44,6 @@ public class MinecartClientHandler {
     private static volatile Map<UUID, MinecartsGroup> uuidToGroup = new ConcurrentHashMap<>();
     private static volatile Set<UUID> currentLeaders = ConcurrentHashMap.newKeySet();
 
-    /**
-     * 服务端销毁通知：{@code data} 是销毁瞬间的矿车状态（{@code removed=true}），
-     * {@code hopper} 是同一时刻的漏斗矿车快照（若该矿车是漏斗矿车）。
-     */
     public record RemovalNotice(MinecartDataPayload data, HopperMinecartDataPayload hopper) {
     }
 
@@ -173,7 +161,6 @@ public class MinecartClientHandler {
         currentLeaders = newCurrentLeaders;
     }
 
-
     public static int getGroupSize(UUID uuid) {
         MinecartsGroup group = uuidToGroup.get(uuid);
         if (group != null) {
@@ -214,7 +201,7 @@ public class MinecartClientHandler {
 
         hopperMinecarts.sort(Comparator.comparingInt(Entity::getId));
 
-        //1.20.4 最低支持 Java 17，没有 List#getFirst()
+        //1.20.x 最低支持 Java 17，没有 List#getFirst()
         return hopperMinecarts.get(0).getUuid();
     }
 
@@ -297,12 +284,10 @@ public class MinecartClientHandler {
         });
     }
 
-
     public static MinecartDataPayload getMinecartData(UUID uuid) {
         return MINECART_DATA.get(uuid);
     }
 
-    /** 只在该矿车的数据仍然新鲜时返回，避免显示早已过期的内容。 */
     public static MinecartDataPayload getFreshMinecartData(UUID uuid) {
         MinecartDataPayload data = MINECART_DATA.get(uuid);
         if (data == null || !isFresh(uuid)) {
@@ -315,7 +300,6 @@ public class MinecartClientHandler {
         return HOPPER_MINECART_DATA.get(uuid);
     }
 
-    /** 只在该矿车的数据仍然新鲜时返回。 */
     public static HopperMinecartDataPayload getFreshHopperMinecartData(UUID uuid) {
         HopperMinecartDataPayload data = HOPPER_MINECART_DATA.get(uuid);
         if (data == null || !isFresh(uuid)) {
@@ -328,7 +312,6 @@ public class MinecartClientHandler {
         return TNT_MINECART_DATA.get(uuid);
     }
 
-    /** 该矿车的数据是否仍然新鲜（距最近一次收到服务端数据的时间在阈值内）。 */
     public static boolean isFresh(UUID uuid) {
         if (MINECART_DATA.get(uuid) == null) {
             return false;
@@ -337,33 +320,23 @@ public class MinecartClientHandler {
         return lastUpdate != null && Util.getMeasuringTimeMs() - lastUpdate <= MAX_FRESH_AGE_MS;
     }
 
-    /** 该矿车距最近一次收到服务端数据已经过了多少毫秒（没有数据返回 -1）。 */
     public static long getMillisSinceUpdate(UUID uuid) {
         Long lastUpdate = LAST_UPDATE_MS.get(uuid);
         return lastUpdate == null ? -1L : Util.getMeasuringTimeMs() - lastUpdate;
     }
 
-    /** 最近一次收到的服务端时间，用于追踪器计时与统计（替代客户端自己的 tick 计数）。 */
     public static long getLatestServerTime() {
         return latestServerTime;
     }
 
-    /** 当前单调时钟（毫秒），只用于判断数据是否过期。 */
     public static long nowMs() {
         return Util.getMeasuringTimeMs();
     }
 
-    /** 取走并清除某个矿车的销毁通知；返回服务端补发的最后一份数据。 */
     public static RemovalNotice consumeRemoval(UUID uuid) {
         return REMOVED_DATA.remove(uuid);
     }
 
-    /**
-     * 取走该矿车最早的一条"被挤压"事件；没有则返回 {@code null}。
-     *
-     * <p>只有真的在追踪这台矿车（存在追踪器）时才有人来取，所以"没被追踪就不输出"
-     * 是天然成立的，不需要额外判断。</p>
-     */
     public static MinecartCollisionPayload pollCollision(UUID uuid) {
         Deque<MinecartCollisionPayload> queue = COLLISION_NOTICES.get(uuid);
         return queue == null ? null : queue.pollFirst();
@@ -379,12 +352,6 @@ public class MinecartClientHandler {
         SERVER_POS.put(uuid, pos);
     }
 
-    /**
-     * 取矿车的服务端权威坐标，并在最近两次服务端同步之间按渲染 tick 插值，
-     * 避免网络抖动导致的框体跳动。
-     *
-     * @return 未收到服务端坐标时返回 {@code null}
-     */
     public static Vec3d getServerPos(UUID uuid, float tickDelta) {
         Vec3d current = SERVER_POS.get(uuid);
         if (current == null) {
@@ -429,7 +396,6 @@ public class MinecartClientHandler {
         REMOVED_DATA.entrySet().removeIf(entry -> !isPending(entry.getKey()));
     }
 
-    /** 销毁通知是否还没被追踪器取走（超过一定时间没有追踪器认领就丢掉）。 */
     private static boolean isPending(UUID uuid) {
         return TrackersManager.containsTracker(uuid);
     }

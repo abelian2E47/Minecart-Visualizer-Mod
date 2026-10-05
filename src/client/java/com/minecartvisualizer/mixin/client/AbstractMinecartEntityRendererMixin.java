@@ -126,7 +126,7 @@ public abstract class AbstractMinecartEntityRendererMixin extends EntityRenderer
                     }
                     String shortUuid = tracker.getShortUuid();
                     TrackerColor trackerColor = tracker.getTrackerColor();
-                    infoTexts.add(Text.literal("ID: " + shortUuid).withColor(trackerColor.getHex()));
+                    infoTexts.add(Text.literal("ID: " + shortUuid).styled(s -> s.withColor(trackerColor.getHex())));
                 }
             }
 

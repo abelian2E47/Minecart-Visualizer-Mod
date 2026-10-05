@@ -4,16 +4,17 @@ package com.minecartvisualizer.mixin;
 import com.minecartvisualizer.MinecartDataSender;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.entity.vehicle.AbstractMinecartEntity;
 import net.minecraft.entity.vehicle.TntMinecartEntity;
-import net.minecraft.entity.vehicle.VehicleEntity;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+//1.20.1 里 TntMinecartEntity 的父类是 AbstractMinecartEntity（VehicleEntity 是 1.20.2 才抽出来的）
 @Mixin(TntMinecartEntity.class)
-public abstract class TNTMinecartEntityMixin extends VehicleEntity {
+public abstract class TNTMinecartEntityMixin extends AbstractMinecartEntity {
 
     public TNTMinecartEntityMixin(EntityType<?> type, World world) {super(type, world);}
 

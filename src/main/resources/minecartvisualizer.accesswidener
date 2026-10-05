@@ -1,6 +1,8 @@
 accessWidener	v2	named
 
-# 1.20.x 的 yarn 把渲染层的组合类型声明为 protected / 包内私有，原版官方映射里它们是 public。
+# 1.20.x 的 Mojang jar 把渲染层的组合类型声明为 protected，原版官方映射里它们是 public。
+# 混淆 jar 的 InnerClasses 属性写的是 protected，javac 以它为准
+# （反编译出来的源码看着是 public，是反编译器读了 class 自身的 access_flags）。
 # 这里只放宽访问权限、不改任何行为，以便继续按 1.21.1 的写法直接组合渲染层。
 accessible	class	net/minecraft/client/render/RenderLayer$MultiPhase
 accessible	class	net/minecraft/client/render/RenderLayer$MultiPhaseParameters

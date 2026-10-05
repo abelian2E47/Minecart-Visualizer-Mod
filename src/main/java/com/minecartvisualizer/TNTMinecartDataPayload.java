@@ -16,7 +16,10 @@ public record TNTMinecartDataPayload(UUID uuid, int fuseTicks, boolean isExplode
         buf.writeUuid(payload.uuid);
         buf.writeInt(payload.fuseTicks);
         buf.writeBoolean(payload.isExploded);
-        buf.writeVec3d(payload.explosionPos);
+        //1.20.1 的 PacketByteBuf 还没有 writeVec3d，原样写成三个 double（与 1.20.2+ 的实现一致）
+        buf.writeDouble(payload.explosionPos.x);
+        buf.writeDouble(payload.explosionPos.y);
+        buf.writeDouble(payload.explosionPos.z);
         buf.writeFloat(payload.damageWobbleStrength);
     }
 
@@ -25,7 +28,7 @@ public record TNTMinecartDataPayload(UUID uuid, int fuseTicks, boolean isExplode
                 buf.readUuid(),
                 buf.readInt(),
                 buf.readBoolean(),
-                buf.readVec3d(),
+                new Vec3d(buf.readDouble(), buf.readDouble(), buf.readDouble()),
                 buf.readFloat()
         );
     }

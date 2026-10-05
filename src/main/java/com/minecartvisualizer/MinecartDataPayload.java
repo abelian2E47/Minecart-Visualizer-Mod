@@ -7,22 +7,6 @@ import net.minecraft.util.math.Vec3d;
 import java.util.ArrayList;
 import java.util.UUID;
 
-/**
- * 服务端每 tick 下发的矿车状态，是客户端所有矿车显示的权威数据源。
- *
- * <p>新增两个字段，用于消除客户端自行推算带来的显示误差：</p>
- * <ul>
- *     <li>{@code serverTime}：服务端世界时间（tick）。客户端用它做数据时效判定、
- *     追踪器运行时长、连续吸取持续 tick 数与计数器统计，不再使用客户端自己的
- *     {@code ClientWorld#getTime()}（客户端卡顿、单机暂停、掉帧都会让它与真实进度漂移）。</li>
- *     <li>{@code removed}：矿车被真正销毁（{@code KILLED} / {@code DISCARDED}）时
- *     由服务端补发的最后一次数据，客户端据此判定"矿车被摧毁"，
- *     不再依据客户端实体列表（离开视距或区块卸载会被误判为摧毁）。</li>
- * </ul>
- *
- * <p>1.20.x 没有 {@code PacketCodec}，原来 {@code CODEC} 里的编码/解码逻辑
- * 拆成同名的静态方法，字段顺序与 CODEC 中完全一致。</p>
- */
 public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double speed, float yaw, int id,
                                   long serverTime, boolean removed) {
 
@@ -53,7 +37,6 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
                 buf.readBoolean()
         );
     }
-
 
     public ArrayList<MutableText> getInfoTexts(int accuracy, boolean[] EnableFunctions) {
         ArrayList<MutableText> infoTexts = new ArrayList<>();
@@ -102,6 +85,5 @@ public record MinecartDataPayload(UUID uuid, Vec3d pos, Vec3d velocity, double s
 
         return infoTexts;
     }
-
 
 }

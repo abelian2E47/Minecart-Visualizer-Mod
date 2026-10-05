@@ -10,29 +10,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * 服务端每 tick 下发的漏斗矿车状态。
- *
- * <p>{@code items} 是服务端权威的物品栏；{@code extractionBlock} 与
- * {@code extractionEntities} 是服务端按原版 {@code HopperBlockEntity#extract} 逻辑
- * 算出的"这一 tick 真正会被吸取的对象"，客户端直接照着高亮即可，
- * 不再用客户端世界自己去猜（客户端区块/实体同步可能滞后，且远距离时根本没有区块数据）。</p>
- *
- * @param extractionBlock     会被吸取的容器方块（有则连形状一起高亮）
- * @param extractionEntities  会被吸取的实体容器碰撞箱（原版按此搜索并随机取一个）
- */
 public record HopperMinecartDataPayload(UUID uuid, boolean enable, List<ItemStack> items,
                                         Optional<BlockPos> extractionBlock,
                                         List<Box> extractionEntities) {
-    /** 兼容旧构造调用：只带物品栏（不携带吸取目标）。 */
+    
     public HopperMinecartDataPayload(UUID uuid, boolean enable, List<ItemStack> items) {
         this(uuid, enable, items, Optional.empty(), List.of());
     }
 
-    /**
-     * 1.20.x 的 {@code PacketByteBuf#writeItemStack} / {@code readItemStack} 就是
-     * 1.21.1 里 {@code ItemStack.OPTIONAL_PACKET_CODEC} 的等价物（同样把空堆编码成空堆）。
-     */
     public static void write(PacketByteBuf buf, HopperMinecartDataPayload payload) {
         buf.writeUuid(payload.uuid());
         buf.writeBoolean(payload.enable());
