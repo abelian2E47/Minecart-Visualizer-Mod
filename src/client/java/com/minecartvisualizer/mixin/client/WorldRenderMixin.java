@@ -191,10 +191,7 @@ public abstract class WorldRenderMixin {
             return;
         }
 
-        //此时的模型视图矩阵已被原版弹出，需要自行设置世界相机变换
-        MatrixStack modelViewStack = RenderSystem.getModelViewStack();
-        modelViewStack.push();
-        modelViewStack.multiplyPositionMatrix(projectionMatrix);
+        //1.20.x 世界阶段 ModelViewMat 是单位矩阵，这里不用（也不能）改模型视图矩阵，相机旋转由位姿自己带
         //关闭深度测试，让线框无视深度绘制在最上层
         RenderSystem.disableDepthTest();
         try {
@@ -204,7 +201,6 @@ public abstract class WorldRenderMixin {
             InfoRenderer.renderQueuedInfoTexts();
         } finally {
             RenderSystem.enableDepthTest();
-            modelViewStack.pop();
         }
     }
 
@@ -224,6 +220,7 @@ public abstract class WorldRenderMixin {
 
             Vec3d camPos = camera.getPos();
             MatrixStack trailMatrices = new MatrixStack();
+            InfoRenderer.applyWorldViewRotation(trailMatrices);
             trailMatrices.translate(-camPos.x, -camPos.y, -camPos.z);
 
             for (HopperMinecartTracker tracker : TrackersManager.getAllTrackers()) {
@@ -247,6 +244,7 @@ public abstract class WorldRenderMixin {
 
         Vec3d camPos = camera.getPos();
         MatrixStack pointMatrices = new MatrixStack();
+        InfoRenderer.applyWorldViewRotation(pointMatrices);
         pointMatrices.translate(-camPos.x, -camPos.y, -camPos.z);
 
         for (Map.Entry<BlockPos, PointState> entry : trackerPoints.entrySet()) {

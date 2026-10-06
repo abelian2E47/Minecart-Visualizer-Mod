@@ -236,6 +236,16 @@ public class InfoRenderer {
         queuedWorldBoxes.add(new QueuedWorldBox(box, scale, color));
     }
 
+    /**
+     * 1.20.x 世界阶段的 ModelViewMat 是单位矩阵（相机旋转在位姿栈里），
+     * 用「相机相对坐标 + 空 MatrixStack」画的几何体必须自己把相机旋转写进位姿。
+     */
+    public static void applyWorldViewRotation(MatrixStack matrices) {
+        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
+        matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(camera.getPitch()));
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(camera.getYaw() + 180.0F));
+    }
+
     public static void renderQueuedWorldBoxes() {
         if (queuedWorldBoxes.isEmpty()) return;
 
@@ -246,6 +256,7 @@ public class InfoRenderer {
         client.getFramebuffer().beginWrite(false);
         VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.LINES_ON_TOP);
         MatrixStack matrices = new MatrixStack();
+        applyWorldViewRotation(matrices);
 
         for (QueuedWorldBox queued : queuedWorldBoxes) {
             Box viewBox = queued.box().offset(-cameraPos.x, -cameraPos.y, -cameraPos.z);
@@ -267,6 +278,7 @@ public class InfoRenderer {
         client.getFramebuffer().beginWrite(false);
         VertexConsumer lines = vertexConsumers.getBuffer(CustomRenderLayers.LINES_ON_TOP);
         MatrixStack matrices = new MatrixStack();
+        applyWorldViewRotation(matrices);
 
         float[] color = Colors.rgbFloats(MinecartVisualizerConfig.getInstance().extractionTargetColor,
                 MinecartVisualizerConfig.DEFAULT_EXTRACTION_TARGET_COLOR.getRGB());
@@ -442,11 +454,13 @@ public class InfoRenderer {
     }
 
     private static void drawVertex(Matrix4f matrix, VertexConsumer buffer, float x, float y, float z, float r, float g, float b, float a) {
+        //1.20.x 必须调 next() 收尾，否则该顶点被静默丢弃（整个矩形/线条都不渲染）
         buffer.vertex(matrix, x, y, z)
                 .color(r, g, b, a)
                 .texture(0.0f, 0.0f)
                 .light(15728880)
-                .normal(0.0f, 0.0f, 1.0f);
+                .normal(0.0f, 0.0f, 1.0f)
+                .next();
     }
 
     public static void drawLine(Vec3d startPoint, Vec3d endPoint,
@@ -463,8 +477,8 @@ public class InfoRenderer {
 
         Vector3f normal = endPoint.subtract(startPoint).toVector3f();
 
-        lineConsumer.vertex(matrix, startX, startY, startZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z);
-        lineConsumer.vertex(matrix, endX, endY, endZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z);
+        lineConsumer.vertex(matrix, startX, startY, startZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z).next();
+        lineConsumer.vertex(matrix, endX, endY, endZ).color(r, g, b, 1.0f).normal(normal.x,normal.y,normal.z).next();
     }
 
     public static boolean shouldRender(Entity entity) {
@@ -575,9 +589,9 @@ public class InfoRenderer {
         shape.forEachEdge((x1, y1, z1, x2, y2, z2) -> {
             Vector3f normal = new Vector3f((float) (x2 - x1), (float) (y2 - y1), (float) (z2 - z1)).normalize();
             lines.vertex(positionMatrix, (float) (x1 + offsetX), (float) (y1 + offsetY), (float) (z1 + offsetZ))
-                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z());
+                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z()).next();
             lines.vertex(positionMatrix, (float) (x2 + offsetX), (float) (y2 + offsetY), (float) (z2 + offsetZ))
-                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z());
+                    .color(argb).normal(normalMatrix, normal.x(), normal.y(), normal.z()).next();
         });
     }
 
